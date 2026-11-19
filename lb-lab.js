@@ -262,6 +262,18 @@ function wav(buf){const ch=buf.numberOfChannels,n=buf.length,sr=buf.sampleRate,a
  w(0,'RIFF');v.setUint32(4,36+n*ch*2,true);w(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,ch,true);v.setUint32(24,sr,true);v.setUint32(28,sr*ch*2,true);v.setUint16(32,ch*2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,n*ch*2,true);
  const d=[];for(let c=0;c<ch;c++)d.push(buf.getChannelData(c));let o=44;for(let i=0;i<n;i++)for(let c=0;c<ch;c++){const x=Math.max(-1,Math.min(1,d[c][i]));v.setInt16(o,x<0?x*32768:x*32767,true);o+=2}return new Blob([ab],{type:'audio/wav'})}
 
+/* Smooth saver: writes the WAV in small chunks (UI never freezes), normalises loudness, shows % progress */
+async function wavAsync(buf,onProg){const ch=buf.numberOfChannels,n=buf.length,sr=buf.sampleRate,d=[];for(let c=0;c<ch;c++)d.push(buf.getChannelData(c));
+ const CH=48000;let pk=0;
+ for(let i=0;i<n;i+=CH){const e=Math.min(n,i+CH);for(let c=0;c<ch;c++){const a=d[c];for(let j=i;j<e;j++){const x=a[j]<0?-a[j]:a[j];if(x>pk)pk=x}}if(((i/CH)&15)===0)await new Promise(r=>setTimeout(r,0))}
+ const g=pk>0.0001?Math.min(3,0.97/pk):1,h=new DataView(new ArrayBuffer(44)),w=(o,t)=>[...t].forEach((c,i)=>h.setUint8(o+i,c.charCodeAt(0)));
+ w(0,'RIFF');h.setUint32(4,36+n*ch*2,true);w(8,'WAVEfmt ');h.setUint32(16,16,true);h.setUint16(20,1,true);h.setUint16(22,ch,true);h.setUint32(24,sr,true);h.setUint32(28,sr*ch*2,true);h.setUint16(32,ch*2,true);h.setUint16(34,16,true);w(36,'data');h.setUint32(40,n*ch*2,true);
+ const parts=[h.buffer];
+ for(let i=0;i<n;i+=CH){const e=Math.min(n,i+CH),o=new Int16Array((e-i)*ch);let k=0;
+  for(let j=i;j<e;j++)for(let c=0;c<ch;c++){const x=Math.max(-1,Math.min(1,d[c][j]*g));o[k++]=x<0?x*32768:x*32767}
+  parts.push(o.buffer);onProg&&onProg(i/n);await new Promise(r=>setTimeout(r,0))}
+ return new Blob(parts,{type:'audio/wav'})}
+
 /* ---- recording ---- */
 let RC=null;
 async function record(i){const sec=P.sections[i];
@@ -386,8 +398,8 @@ async function act(a,i,v){i=+i;
 async function create(){if(!P.sections.some(s=>tkOf(s)))return toast('Record at least one part first 🎙');
  stopL();BUSY=true;$('#busy').classList.add('on');const msg=$('#bMsg');msg.textContent='Preparing your recordings…';
  try{await ensureBeat(P);for(const s of P.sections){const tk=tkOf(s);if(tk&&!TB[tk.id])await takeBuf(tk.id)}
-  msg.textContent='Mixing your song like a studio…';await sleep(80);const buf=await mixProject(P);msg.textContent='Finishing…';await sleep(30);
-  const blob=wav(buf);if(RES)URL.revokeObjectURL(RES.url);RES={blob,url:URL.createObjectURL(blob),name:`${P.artist||'Me'} - ${P.name||'My song'}.wav`.replace(/[\\/:*?"<>|]/g,'')};toast('Your song is ready 🎉')}
+  msg.textContent='Mixing your song like a studio…';await sleep(80);const buf=await mixProject(P);msg.textContent='Saving… 0%';await sleep(30);
+  const blob=await wavAsync(buf,f=>{msg.textContent='Saving… '+Math.round(f*100)+'%'});if(RES)URL.revokeObjectURL(RES.url);RES={blob,url:URL.createObjectURL(blob),name:`${P.artist||'Me'} - ${P.name||'My song'}.wav`.replace(/[\\/:*?"<>|]/g,'')};toast('Your song is ready 🎉')}
  catch(e){console.error(e);toast('Could not create the song. Try fewer parts or a shorter song.')}
  BUSY=false;$('#busy').classList.remove('on');renderLab();setTimeout(()=>window.scrollTo(0,document.body.scrollHeight),80)}
 const lab=$('#lab');
