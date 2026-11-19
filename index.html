@@ -25,6 +25,7 @@ h1{font-size:28px;font-weight:800}h3{font-size:17px}.mut{color:var(--mut);font-s
 .sec{display:flex;justify-content:space-between;align-items:center;margin:18px 0 10px}
 .more{background:rgba(255,255,255,.08);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--mut);font-weight:700}
 .row{display:flex;align-items:center;gap:12px;padding:8px 0}.row.now b{color:var(--ac)}
+.wf{display:block;width:100%;max-width:140px;height:14px;fill:var(--ac);opacity:.65;margin-top:3px}
 .cv{width:50px;height:50px;border-radius:10px;display:grid;place-items:center;font-size:21px;flex-shrink:0;background-size:cover!important;background-position:center!important}
 .si{flex:1;min-width:0}.si b{display:block;font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .si small{color:var(--mut);font-size:12px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -327,8 +328,9 @@ function show(id,nohist){if(PAGE!==id&&!nohist)HIST.push(PAGE);PAGE=id;document.
 const back=()=>show(HIST.pop()||'music',true);
 
 /* ---------- rows ---------- */
+const wfSvg=w=>`<svg class="wf" viewBox="0 0 ${w.length*3} 14" preserveAspectRatio="none">${w.map((v,i)=>`<rect x="${i*3}" y="${(7-v*.07).toFixed(1)}" width="2" height="${Math.max(1,v*.14).toFixed(1)}" rx="1"/>`).join('')}</svg>`;
 function row(s,list,i){const d=document.createElement('div');d.className='row'+(cur()?.id===s.id?' now':'');
- d.innerHTML=`<div class="cv" style="background:${cvBg(s)}">${artURL(s)?'':'♫'}</div><div class="si"><b>${esc(s.title)}</b><small>${s.online?`<span class="tag">${esc(s.srcName)}</span>`:''}${esc(s.artist)}${s.album?' · '+esc(s.album):''} · ${fmt(s.dur)}</small></div>${s.online?'<button class="ib sv">⬇</button>':`<button class="ib fv">${S.fav.includes(s.id)?'❤️':'♡'}</button>`}<button class="ib mo">⋮</button>`;
+ d.innerHTML=`<div class="cv" style="background:${cvBg(s)}">${artURL(s)?'':'♫'}</div><div class="si"><b>${esc(s.title)}</b><small>${s.online?`<span class="tag">${esc(s.srcName)}</span>`:''}${esc(s.artist)}${s.album?' · '+esc(s.album):''} · ${fmt(s.dur)}</small>${s.wf?wfSvg(s.wf):''}</div>${s.online?'<button class="ib sv">⬇</button>':`<button class="ib fv">${S.fav.includes(s.id)?'❤️':'♡'}</button>`}<button class="ib mo">⋮</button>`;
  d.onclick=()=>s.online?playOnline(list,i):play(list.map(x=>x.id),i);
  const fv=d.querySelector('.fv');if(fv)fv.onclick=e=>{e.stopPropagation();toggleFav(s.id)};
  const sv=d.querySelector('.sv');if(sv)sv.onclick=e=>{e.stopPropagation();saveOnline(s)};
