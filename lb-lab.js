@@ -19,6 +19,7 @@ AUD='https://api.audius.co/v1';
 
 /* ---------------- styles + DOM ---------------- */
 const css=document.createElement('style');css.textContent=`
+#lbMini{position:fixed;right:12px;bottom:calc(140px + env(safe-area-inset-bottom));z-index:110;display:none;align-items:center;gap:6px;background:#1b1f27;border:1px solid #ffffff33;border-radius:999px;padding:5px 6px 5px 14px;box-shadow:0 6px 22px #000a;font-size:13px;font-weight:700;color:#fff}#lbMini.on{display:flex}#lbMini button{width:36px;height:36px;border-radius:50%;background:#ffffff1a;color:#fff;font-size:16px;display:flex;align-items:center;justify-content:center}#lbMini #lbMiniX{background:#e5384f}
 .lbtn{background:var(--card);border:1px solid #ffffff22;border-radius:14px;padding:11px 14px;font-size:13px;font-weight:700;color:#fff}
 .lbtn.pr{background:linear-gradient(135deg,var(--ac),var(--ac2));color:#04201c;border:0}
 .lbtn.rec{background:#e5384f;color:#fff;border:0}
@@ -191,8 +192,17 @@ const fixP=p=>{if(p){p.vol=p.vol||{beat:80,voc:100};if(p.vol.bk==null)p.vol.bk=6
 const gf=(p,k)=>p.solo?(p.solo===k?1:0):(p.mute&&p.mute[k]?0:1);
 const VB=id=>TUN[id]||TB[id];
 const lc=()=>{LC=LC||new AC();LC.resume&&LC.resume();return LC};
-const stopL=()=>{LP.forEach(x=>{try{x.stop()}catch(e){}});LP=[]};
+/* ---- floating preview pill: pause / stop a preview from any page ---- */
+let MPK=0,MPP=0;const mpEl=document.createElement('div');mpEl.id='lbMini';mpEl.innerHTML='<span id="lbMiniT">🎧 Preview</span><button id="lbMiniP" aria-label="Pause">⏸</button><button id="lbMiniX" aria-label="Stop">✕</button>';document.body.appendChild(mpEl);
+const mpShow=(k,t)=>{MPK=k;MPP=0;mpEl.querySelector('#lbMiniT').textContent=t;mpEl.querySelector('#lbMiniP').textContent='⏸';mpEl.classList.add('on')};
+const mpHide=()=>{MPK=0;MPP=0;mpEl.classList.remove('on')};
+const stopL=()=>{LP.forEach(x=>{try{x.stop()}catch(e){}});LP=[];if(MPK===1)mpHide()};
 const OA=new Audio();OA.ontimeupdate=()=>{if(OA.currentTime>30)OA.pause()};
+OA.addEventListener('play',()=>{stopL();mpShow(2,'🎧 Online beat')});OA.addEventListener('pause',()=>{if(MPK===2&&!MPP)mpHide()});OA.addEventListener('ended',()=>{if(MPK===2)mpHide()});
+mpEl.querySelector('#lbMiniP').onclick=()=>{const b=mpEl.querySelector('#lbMiniP');
+ if(MPK===1){if(!LC)return;if(MPP){LC.resume();MPP=0;b.textContent='⏸'}else{LC.suspend();MPP=1;b.textContent='▶'}}
+ else if(MPK===2){if(MPP){MPP=0;b.textContent='⏸';OA.play().catch(()=>{})}else{MPP=1;b.textContent='▶';OA.pause()}}};
+mpEl.querySelector('#lbMiniX').onclick=()=>{stopL();try{OA.pause()}catch(e){}if(LC&&LC.state==='suspended')try{LC.resume()}catch(e){}mpHide()};
 const save=()=>{const l=LS('labp',[]).filter(x=>x.id!==P.id);l.unshift(P);SV('labp',l)};
 const newSec=type=>({id:'s'+Date.now()+Math.random().toString(36).slice(2,5),type,bars:{verse:16,chorus:8,bridge:8,intro:4,outro:4}[type],lyrics:'',take:null,ref:null});
 function autoLen(p){const T=p.target||240,bar=240/p.beat.bpm,tot=()=>p.sections.reduce((a,s)=>a+s.bars,0)*bar;let g=0;
@@ -205,7 +215,7 @@ const secName=i=>{const s=P.sections[i],n=P.sections.filter((x,k)=>x.type===s.ty
 const secStart=(p,i)=>p.sections.slice(0,i).reduce((a,s)=>a+s.bars*240/p.beat.bpm,0);
 
 /* ---- beat engine (WebAudio synth, rendered offline) ---- */
-const beatOffs=p=>{const B=p.beat,bar=240/B.bpm;let off=0,pos=0;return p.sections.map(s=>{const s0=pos;pos+=s.bars*bar;if(s.rs)off=-s0;off+=(s.bp||0)*60/B.bpm;return off})};
+const beatOffs=p=>{const B=p.beat,bar=240/B.bpm;let off=0,pos=0;return p.sections.map(s=>{const s0=pos;pos+=s.bars*bar;if(s.rs)off=-s0;if(s.at>=1)off=(s.at-1)*bar-s0;off+=(s.bp||0)*60/B.bpm;return off})};
 function sched(oc,dest0,p,t0,t1){let dest=dest0;
  const B=p.beat,bar=240/B.bpm,st=bar/16,gen=B.kind==='gen',y=gen?(B.tmp||styleOf(B.style)):{},bg=p.bg||{};
  const N=oc.createBuffer(1,oc.sampleRate*2,oc.sampleRate),nd=N.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;
@@ -222,6 +232,12 @@ function sched(oc,dest0,p,t0,t1){let dest=dest0;
  if(!gen&&EXT[B.id]){const E=EXT[B.id],offs=beatOffs(p);let q=0;
   p.sections.forEach((sec,k)=>{const a=q,e=k===p.sections.length-1?Math.max(t1,a+sec.bars*bar):a+sec.bars*bar;q+=sec.bars*bar;const A=Math.max(a,t0),Z=Math.min(e,t1);if(Z<=A+1e-6)return;
    const bt=(((A+offs[k])%E.duration)+E.duration)%E.duration,src=oc.createBufferSource();src.buffer=E;src.loop=true;src.connect(bus(sec));src.start(A-t0,bt);src.stop(Z-t0)})}
+ {let q=0;p.sections.forEach((sec,k)=>{const a=q,len=sec.bars*bar;q+=len;const X=sec.x&&EXT[sec.x.id];if(!X)return;
+  const e=k===p.sections.length-1?Math.max(t1,a+len):a+len,A=Math.max(a,t0),Z=Math.min(e,t1);if(Z<=A+1e-6)return;
+  const lp=sec.x.loop!==false,xs=((sec.x.at||1)-1)*bar+(A-a);if(!lp&&xs>=X.duration)return;
+  const bt=lp?((xs%X.duration)+X.duration)%X.duration:xs,src=oc.createBufferSource(),gx=oc.createGain(),v=Math.max(0,(sec.x.vol==null?100:sec.x.vol)/100);
+  src.buffer=X;src.loop=lp;gx.gain.setValueAtTime(v,0);gx.gain.setValueAtTime(v,Math.max(0,Z-t0-.05));gx.gain.linearRampToValueAtTime(0,Math.max(.01,Z-t0));
+  src.connect(gx);gx.connect(dest0);src.start(A-t0,bt);src.stop(Z-t0)})}
  if(y.vin||bg.vinyl){const s=oc.createBufferSource();s.buffer=N;s.loop=true;const f=oc.createBiquadFilter();f.type='bandpass';f.frequency.value=4000;const x=g(.018,0);s.connect(f);f.connect(x);s.start(0);s.stop(t1-t0)}
  const prog=CH[B.mode==='M'?'M':'m'];let pos=0;
  p.sections.forEach(sec=>{const s0=pos;pos+=sec.bars*bar;if(s0+sec.bars*bar<=t0+1e-6||s0>=t1-1e-6)return;
@@ -239,14 +255,15 @@ function sched(oc,dest0,p,t0,t1){let dest=dest0;
 function mst(oc,fadeEnd){const c=oc.createDynamicsCompressor();c.threshold.value=-14;c.knee.value=12;c.ratio.value=3;c.attack.value=.01;c.release.value=.2;
  const m=oc.createGain();m.gain.value=.9;if(fadeEnd){m.gain.setValueAtTime(.9,Math.max(0,fadeEnd-4));m.gain.linearRampToValueAtTime(0,fadeEnd-.1)}c.connect(m);m.connect(oc.destination);return c}
 const renderWin=(p,t0,t1)=>{const oc=new OfflineAudioContext(2,Math.max(1,Math.ceil((t1-t0)*SR)),SR);sched(oc,mst(oc),p,t0,t1);return oc.startRendering()};
-async function ensureBeat(p){const B=p.beat;if(B.kind!=='ext'||EXT[B.id])return;let blob;
+async function loadExt(B,must){if(EXT[B.id])return;let blob;try{
  if(B.from==='lib'){const r=await tx('blobs','readonly',b=>b.get(B.sid));blob=r&&r.blob}else{const r=await kvGet('beat_'+B.id);blob=r&&r.blob}
- if(!blob)throw new Error('beat missing');EXT[B.id]=await dec(await blob.arrayBuffer())}
+ if(!blob)throw new Error('beat missing');EXT[B.id]=await dec(await blob.arrayBuffer())}catch(e){if(must)throw e}}
+async function ensureBeat(p){const B=p.beat;if(B.kind==='ext')await loadExt(B,true);for(const sc of p.sections)if(sc.x)await loadExt(sc.x,false)}
 async function takeBuf(id){if(TB[id])return TB[id];const r=await kvGet('take_'+id);if(!r)return null;return TB[id]=await dec(await r.blob.arrayBuffer())}
-async function guideBuf(i){await ensureBeat(P);const sec=P.sections[i],s0=secStart(P,i),k=JSON.stringify([P.beat,P.bg,sec.type,sec.bars,P.beat.kind==='ext'?s0:0,sec.mix||'full',P.beat.kind==='ext'?beatOffs(P)[i]:0]);
+async function guideBuf(i){await ensureBeat(P);const sec=P.sections[i],s0=secStart(P,i),k=JSON.stringify([P.beat,P.bg,sec.type,sec.bars,P.beat.kind==='ext'?s0:0,sec.mix||'full',P.beat.kind==='ext'?beatOffs(P)[i]:0,sec.x||0,sec.at||0,P.vol.beat]);
  if(GUIDE.has(k))return GUIDE.get(k);const b=await renderWin(P,s0,s0+sec.bars*240/P.beat.bpm);if(GUIDE.size>8)GUIDE.clear();GUIDE.set(k,b);return b}
-function playBuf(buf){stopL();const c=lc(),s=c.createBufferSource();s.buffer=buf;s.connect(c.destination);s.start();LP=[s]}
-function listenTake(guide,vb,off){stopL();const c=lc(),b=c.createBufferSource();b.buffer=guide;b.connect(c.destination);const v=c.createBufferSource();v.buffer=vb;const g=c.createGain();g.gain.value=1.3;v.connect(g);g.connect(c.destination);const t=c.currentTime+.1;b.start(t);v.start(t,Math.min(off,vb.duration-.01));LP=[b,v]}
+function playBuf(buf){stopL();const c=lc(),s=c.createBufferSource();s.buffer=buf;s.connect(c.destination);s.start();LP=[s];s.onended=()=>{if(LP[0]===s){LP=[];mpHide()}};mpShow(1,'🎧 Beat preview')}
+function listenTake(guide,vb,off){stopL();const c=lc(),b=c.createBufferSource();b.buffer=guide;b.connect(c.destination);const v=c.createBufferSource();v.buffer=vb;const g=c.createGain();g.gain.value=1.3;v.connect(g);g.connect(c.destination);const t=c.currentTime+.1;b.start(t);v.start(t,Math.min(off,vb.duration-.01));LP=[b,v];let n=2;[b,v].forEach(x=>x.onended=()=>{if(LP.includes(x)&&--n<=0){LP=[];mpHide()}});mpShow(1,'🎧 Part preview')}
 
 /* ---- vocal studio chain + final mix ---- */
 function ir(oc,sec){const n=Math.floor(oc.sampleRate*sec),b=oc.createBuffer(2,n,oc.sampleRate);for(let c=0;c<2;c++){const d=b.getChannelData(c);for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/n,2.8)}return b}
@@ -312,7 +329,7 @@ async function record(i,opt={}){const sec=P.sections[i],bpb=240/P.beat.bpm,win=o
  try{au.pause()}catch(e){}stopL();
  const o=$('#recov'),big=$('#rBig'),bar=$('#rBar i'),btn=$('#rBtns');o.classList.add('on');$('#rTitle').textContent=secName(i)+' · '+(win?'bars '+(win[0]+1)+'–'+win[1]:lay?'backing vocal':sec.bars+' bars');
  $('#rLy').textContent=sec.lyrics||'(No lyrics written — just sing!)';btn.innerHTML='';big.textContent='…';
- let cancel=false;$('#rX').onclick=()=>{cancel=true;RC&&RC.stop()};
+ let cancel=false;const xh=()=>{cancel=true;RC&&RC.stop();stopL()};$('#rX').onclick=xh;
  const end=()=>{o.classList.remove('on');st.getTracks().forEach(t=>t.stop());stopL();renderLab()};
  let guide;try{guide=win?await renderWin(P,secStart(P,i)+win[0]*bpb,secStart(P,i)+win[1]*bpb):await guideBuf(i)}catch(e){end();return toast('Could not prepare the beat')}
  if(cancel){end();return}
@@ -328,9 +345,12 @@ async function record(i,opt={}){const sec=P.sections[i],bpb=240/P.beat.bpm,win=o
   await fin;RC=null;bar.style.width='0';
   const blob=new Blob(ch,{type:mr.mimeType||'audio/webm'});let vb;try{vb=await dec(await blob.arrayBuffer())}catch(e){toast('Could not read the recording');return null}
   return{blob,vb,lead}};
+ btn.innerHTML='<button class="lbtn" id="rH">▶ Hear beat</button><button class="lbtn" id="rHs">■ Stop</button><button class="lbtn rec" id="rG">● Start</button>';big.textContent='🎧';
+ const go=await new Promise(res=>{$('#rH').onclick=()=>{try{(lay&&mv)?listenTake(guide,mv,moff):playBuf(guide)}catch(e){}};$('#rHs').onclick=()=>stopL();$('#rG').onclick=()=>{stopL();res(true)};$('#rX').onclick=()=>{stopL();res(false)}});
+ $('#rX').onclick=xh;if(!go||cancel){end();return}
  for(;;){const r=await attempt();if(!r||cancel){end();return}
-  big.textContent='✅';btn.innerHTML='<button class="lbtn" id="rL">▶ Listen</button><button class="lbtn pr" id="rS">💾 Save take</button><button class="lbtn" id="rR">🔁 Retry</button>';
-  const a=await new Promise(res=>{$('#rL').onclick=()=>listenTake(guide,r.vb,r.lead+(P.sync||0)/1000);$('#rS').onclick=()=>res('s');$('#rR').onclick=()=>res('r');$('#rX').onclick=()=>res('x')});stopL();
+  big.textContent='✅';btn.innerHTML='<button class="lbtn" id="rL">▶ Listen</button><button class="lbtn" id="rLs">■ Stop</button><button class="lbtn pr" id="rS">💾 Save take</button><button class="lbtn" id="rR">🔁 Retry</button>';
+  const a=await new Promise(res=>{$('#rL').onclick=()=>listenTake(guide,r.vb,r.lead+(P.sync||0)/1000);$('#rLs').onclick=()=>stopL();$('#rS').onclick=()=>res('s');$('#rR').onclick=()=>res('r');$('#rX').onclick=()=>res('x')});stopL();
   if(a==='s'&&win){try{await savePunch(sec,r,win)}catch(e){console.error(e);toast('Could not save that bit');end();return}save();toast('Bit replaced ✅');end();return}
    if(a==='s'&&lay){const id='t'+Date.now();await kvPut('take_'+id,r.blob);TB[id]=r.vb;(sec.bk=sec.bk||[]).push({id,lead:r.lead,dur:r.vb.duration});save();toast('Backing vocal saved ✅');end();return}
    if(a==='s'){const id='t'+Date.now();if(sec.take)await kvDel('take_'+sec.take.id);await kvPut('take_'+id,r.blob);TB[id]=r.vb;sec.take={id,lead:r.lead,dur:r.vb.duration};sec.ref=null;save();toast('Take saved ✅');end();return}
@@ -338,12 +358,13 @@ async function record(i,opt={}){const sec=P.sections[i],bpb=240/P.beat.bpm,win=o
 async function listen(i){const sec=P.sections[i],tk=tkOf(sec);if(!tk)return;toast('Preparing…');try{const g=await guideBuf(i),vb=await takeBuf(tk.id);listenTake(g,vb,tk.lead+(P.sync||0)/1000)}catch(e){toast('Could not play this part')}}
 
 /* ---- beat picker + beat maker ---- */
-function beatSheet(){const w=document.createElement('div');let tab=0;
+function beatSheet(tg){const w=document.createElement('div');const TBS=tg==null?[0,1,2,3,4]:[2,3,4];let tab=TBS[0];
  const useGen=id=>{const y=styleOf(id);P.beat={kind:'gen',style:id,bpm:y.bpm,key:P.beat.key||0,mode:P.beat.mode||'m'};save();closeSheet();renderLab()};
  const useExt=async(o,getBlob)=>{toast('Loading beat…');try{const blob=await getBlob();if(o.from!=='lib')await kvPut('beat_'+o.id,blob);EXT[o.id]=await dec(await blob.arrayBuffer());
-  P.beat={kind:'ext',id:o.id,from:o.from,sid:o.sid,name:o.name,bpm:P.beat.bpm||90,key:P.beat.key||0,mode:P.beat.mode||'m'};save();closeSheet();renderLab();toast('Beat ready. Set the BPM to match it 🥁')}catch(e){toast('Could not load that beat')}};
+  if(tg!=null){const sc=P.sections[tg];sc.x={id:o.id,from:o.from,sid:o.sid,name:o.name,vol:100,at:1,loop:true};save();closeSheet();renderLab();toast('Sound added to this part ✅');return}
+   P.beat={kind:'ext',id:o.id,from:o.from,sid:o.sid,name:o.name,bpm:P.beat.bpm||90,key:P.beat.key||0,mode:P.beat.mode||'m'};save();closeSheet();renderLab();toast('Beat ready. Set the BPM to match it 🥁')}catch(e){toast('Could not load that beat')}};
  const prev=async b=>{toast('Playing a preview…');try{playBuf(await renderWin({beat:b,bg:{},vol:{beat:80,voc:100},sections:[{type:'chorus',bars:4}]},0,4*240/b.bpm))}catch(e){toast('Preview failed')}};
- const draw=()=>{OA.pause();w.innerHTML=`<div class="chips">${['Built-in','My beats','My music','Online','Upload'].map((t,i)=>`<button class="chip${tab===i?' on':''}" data-t="${i}">${t}</button>`).join('')}</div><div id="bsb"></div>`;
+ const draw=()=>{OA.pause();w.innerHTML=`<div class="chips">${['Built-in','My beats','My music','Online','Upload'].map((t,i)=>!TBS.includes(i)?'':`<button class="chip${tab===i?' on':''}" data-t="${i}">${t}</button>`).join('')}</div><div id="bsb"></div>`;
   w.querySelectorAll('[data-t]').forEach(b=>b.onclick=()=>{tab=+b.dataset.t;draw()});const b=w.querySelector('#bsb');
   if(tab<2){const list=tab===0?Object.entries(ST):Object.entries(LS('beats',{}));
    b.innerHTML=(tab===1&&!list.length?'<div class="empty">No beats made yet.</div>':'')+list.map(([id,y])=>`<div class="row"><div class="si"><b>${E(y.n)}</b><small>${y.bpm} BPM</small></div><button class="ib" data-p="${id}">▶</button><button class="lbtn" data-u="${id}">Use</button></div>`).join('')+(tab===1?'<button class="lbtn pr" id="mk" style="width:100%;margin-top:8px">🎛 Make a new beat</button>':'');
@@ -364,7 +385,7 @@ function beatSheet(){const w=document.createElement('div');let tab=0;
    b.querySelector('#og').onclick=go;go()}
   else{b.innerHTML='<p class="mut" style="margin:8px 0">Choose a beat or instrumental stored on your phone.</p><button class="lbtn pr" id="up" style="width:100%">📂 Choose audio file</button>';
    b.querySelector('#up').onclick=()=>{const f=document.createElement('input');f.type='file';f.accept='audio/*';f.onchange=()=>{const x=f.files[0];if(x)useExt({id:'u'+Date.now(),from:'file',name:x.name.replace(/\.[^.]+$/,'')},async()=>x)};f.click()}}};
- sheet('Choose your beat',[],w);draw()}
+ sheet(tg==null?'Choose your beat':'Add a sound or beat to '+secName(tg),[],w);draw()}
 function makerSheet(){const w=document.createElement('div'),R5=[['k','Kick'],['s','Snare'],['h','Hi-hat'],['c','Clap'],['b','808 bass']],pat={},fromS=y=>R5.forEach(([k])=>pat[k]=[...(y[k]||'').padEnd(16,'.')].map(c=>c==='x'));fromS(ST.boombap);
  w.innerHTML=`<input id="mn" value="My beat" placeholder="Beat name"><label class="mut">BPM <input id="mb" type="number" value="90" min="50" max="200" style="width:90px;display:inline-block"></label><p class="mut" style="margin:8px 0">Start from a style, then tap the squares:</p><div class="chips">${Object.entries(ST).map(([id,y])=>`<button class="chip" data-s="${id}">${y.n}</button>`).join('')}</div>${R5.map(([k,l])=>`<div class="mut">${l}</div><div class="sq" data-r="${k}">${'<i></i>'.repeat(16)}</div>`).join('')}`;
  const paint=()=>R5.forEach(([k])=>w.querySelectorAll(`[data-r="${k}"] i`).forEach((el,i)=>el.classList.toggle('on',pat[k][i])));
@@ -382,10 +403,21 @@ function secHTML(s,i){const bar=240/P.beat.bpm,tk=tkOf(s),src=P.sections.slice(0
  <textarea data-f="lyr" data-i="${i}" rows="2" placeholder="Write your lyrics here (optional)…">${E(s.lyrics)}</textarea>
  <div class="ok">${s.ref?'🔁 Using '+secName(P.sections.findIndex(x=>x.id===s.ref)):tk?'✅ Recorded ('+fm(tk.dur)+')':'<span class="mut">No vocal yet</span>'}</div>
  <div class="lrow">${s.ref?`<button class="lbtn" data-a="own" data-i="${i}">🎤 Sing a new one</button>`:`<button class="lbtn rec" data-a="rec" data-i="${i}">🎙 ${tk?'Re-record':'Record'}</button>`}${tk?`<button class="lbtn" data-a="ls" data-i="${i}">▶ Listen</button>`:''}${tk&&!s.ref?`<button class="lbtn" data-a="del" data-i="${i}">🗑</button>`:''}${!s.ref&&si>=0&&!s.take?`<button class="lbtn" data-a="reuse" data-i="${i}" data-v="${src.id}">🔁 Reuse ${secName(si)}</button>`:''}</div>${tk&&!s.ref?`<div class="lrow"><button class="lbtn" data-a="punch" data-i="${i}">✂ Redo a bit</button><button class="lbtn" data-a="bk" data-i="${i}">➕ Backing vocal</button></div>`:tk?`<div class="lrow"><button class="lbtn" data-a="bk" data-i="${i}">➕ Backing vocal</button></div>`:''}${(s.bk||[]).length?`<div class="lrow"><span class="mut">🎶 Backing:</span>${s.bk.map((b,k)=>`<button class="lbtn" data-a="delbk" data-i="${i}" data-v="${k}">✕ Remove ${k+1}</button>`).join('')}</div>`:''}${beatCtl(s,i)}</div>`}
+function curBar(i){const L=P.beat.kind==='ext'&&EXT[P.beat.id];if(!L)return 1;const bar=240/P.beat.bpm,t=(((secStart(P,i)+beatOffs(P)[i])%L.duration)+L.duration)%L.duration;return Math.floor(t/bar+1e-6)+1}
 function beatCtl(s,i){const ext=P.beat.kind==='ext',bp=s.bp||0,ab=Math.abs(bp),nb=Math.floor(ab/4),rb=ab%4,
  txt=bp?(bp>0?'Pushed forward ':'Pulled back ')+(nb?nb+' bar'+(nb>1?'s ':' '):'')+(rb?rb+' beat'+(rb>1?'s':''):'')+' — from here on':(s.rs?'Starts from the beginning of the beat':'On time'),
- opts=ext?[['full','Full beat'],['quiet','Quiet'],['soft','Soft (muffled)']]:[['full','Full beat'],['drums','Drums only'],['nodrums','No drums'],['quiet','Quiet']];
- return`<div class="lrow"><span class="mut">Beat here</span>${sel('mix',opts,s.mix||'full',i)}<button class="lbtn" data-a="hb" data-i="${i}">▶ Hear beat</button></div>`+(ext?`<div class="lrow"><span class="mut">Move beat</span><button class="lbtn" data-a="bp" data-i="${i}" data-v="-4">◀ bar</button><button class="lbtn" data-a="bp" data-i="${i}" data-v="-1">◀ beat</button><button class="lbtn" data-a="bp" data-i="${i}" data-v="1">beat ▶</button><button class="lbtn" data-a="bp" data-i="${i}" data-v="4">bar ▶</button></div><div class="lrow"><button class="lbtn${s.rs?' pr':''}" data-a="brs" data-i="${i}">⏮ Restart beat here</button>${bp||s.rs?`<button class="lbtn" data-a="bpr" data-i="${i}">↺ Reset</button>`:''}<span class="mut">${txt}</span></div>`:'')}
+ opts=ext?[['full','Full beat'],['quiet','Quiet'],['soft','Soft (muffled)']]:[['full','Full beat'],['drums','Drums only'],['nodrums','No drums'],['quiet','Quiet']],
+ b=(a,l,v,c)=>`<button class="lbtn${c?' pr':''}" data-a="${a}" data-i="${i}"${v!=null?` data-v="${v}"`:''}>${l}</button>`,X=s.x;
+ let h=`<div class="lrow"><span class="mut">Beat here</span>${sel('mix',opts,s.mix||'full',i)}${b('hb','▶ Hear beat')}${b('stp','■ Stop')}</div>`;
+ if(ext)h+=`<div class="lrow"><span class="mut">Start this part from bar</span>${b('atp','−',-1)}<input type="number" data-f="at" data-i="${i}" min="1" step="1" value="${s.at||''}" placeholder="${s.at?'':'next'}" style="width:70px;display:inline-block;text-align:center;margin:0">${b('atp','+',1)}${s.at?b('atp','Continue','clr'):''}</div>
+  <div class="mut" style="font-size:12px;margin-top:4px">${s.at?'Beat jumps to bar '+s.at+' when this part starts.':'Now the beat just continues from the last part (bar '+curBar(i)+'). Type or tap a bar to choose where it starts.'}</div>
+  <div class="lrow"><span class="mut">Move beat</span>${b('bp','◀ bar',-4)}${b('bp','◀ beat',-1)}${b('bp','beat ▶',1)}${b('bp','bar ▶',4)}</div>
+  <div class="lrow">${b('brs','⏮ Restart beat here',null,s.rs)}${bp||s.rs||s.at?b('bpr','↺ Reset'):''}<span class="mut">${txt}</span></div>`;
+ h+=X?`<div class="lrow"><span class="mut">➕ Extra sound:</span><b style="font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${E(X.name||'sound')}</b>${b('xadd','Change')}${b('xdel','✕')}</div>
+  <div class="lrow"><span class="mut" style="width:62px">Volume</span><input type="range" data-f="xvol" data-i="${i}" min="0" max="200" value="${X.vol==null?100:X.vol}" style="flex:1;min-width:0"><b style="width:44px;text-align:right;font-size:12px">${X.vol==null?100:X.vol}%</b></div>
+  <div class="lrow"><span class="mut">Starts at bar</span><input type="number" data-f="xat" data-i="${i}" min="1" step="1" value="${X.at||1}" style="width:70px;display:inline-block;text-align:center;margin:0">${b('xloop',X.loop===false?'Play once':'🔁 Loop',null,X.loop!==false)}</div>`
+ :`<div class="lrow">${b('xadd','➕ Add a sound / beat to this part')}</div>`;
+ return h}
 function mixRows(){const R=[['Beat & background','beat','vb',P.vol.beat,120],['Lead voice','voc','vv',P.vol.voc,160],['Backing voices','bk','vk',P.vol.bk,120]];
  return`<b style="display:block;margin-top:14px">🎚 Mixer</b>`+R.map(([l,k,f,v,mx])=>`<div style="display:flex;align-items:center;gap:6px;margin:8px 0"><span style="width:96px;font-size:13px;flex:none">${l}</span><input type="range" data-f="${f}" min="0" max="${mx}" value="${v}" style="flex:1;min-width:0"><b style="width:44px;text-align:right;font-size:12px;flex:none">${v}%</b><button class="ib" data-a="mute" data-v="${k}" style="font-size:14px;${P.mute[k]?'background:#ff5a5a;color:#fff':''}">M</button><button class="ib" data-a="solo" data-v="${k}" style="font-size:14px;${P.solo===k?'background:#1de9c6;color:#04201c':''}">S</button></div>`).join('')+`<p class="mut">M = mute · S = solo (hear only that one). Backing voices sit under your lead voice.</p>`}
 function renderLab(){if(BUSY)return;fixP(P);const r=$('#lab');
@@ -413,9 +445,10 @@ function renderLab(){if(BUSY)return;fixP(P);const r=$('#lab');
 function setField(t){const f=t.dataset.f,i=+t.dataset.i,v=t.value;if(!P)return;
  if(f==='name')P.name=v;else if(f==='artist')P.artist=v;else if(f==='bpm')P.beat.bpm=Math.max(50,Math.min(200,+v||90));
  else if(f==='key')P.beat.key=+v;else if(f==='mode')P.beat.mode=v;else if(f==='bars')P.sections[i].bars=+v;else if(f==='lyr')P.sections[i].lyrics=v;else if(f==='mix')P.sections[i].mix=v;
- else if(f==='target'){P.target=+v;autoLen(P)}else if(f==='vb')P.vol.beat=+v;else if(f==='vv')P.vol.voc=+v;else if(f==='vk')P.vol.bk=+v;else if(f==='sy')P.sync=+v;else return;
- save();if(['vb','vv','vk','sy'].includes(f)){const b=t.parentElement.querySelector('b');if(b)b.textContent=v+(f==='sy'?'ms':'%')}
- if(f==='bpm'||f==='bars'||f==='target')renderLab()}
+ else if(f==='target'){P.target=+v;autoLen(P)}else if(f==='vb')P.vol.beat=+v;else if(f==='vv')P.vol.voc=+v;else if(f==='vk')P.vol.bk=+v;else if(f==='sy')P.sync=+v;
+  else if(f==='at'){const n=Math.floor(+v);P.sections[i].at=n>=1?n:null}else if(f==='xat'){const x=P.sections[i].x;if(x)x.at=Math.max(1,Math.floor(+v)||1)}else if(f==='xvol'){const x=P.sections[i].x;if(x)x.vol=+v}else return;
+ save();if(['vb','vv','vk','sy','xvol'].includes(f)){const b=t.parentElement.querySelector('b');if(b)b.textContent=v+(f==='sy'?'ms':'%')}
+ if(f==='bpm'||f==='bars'||f==='target'||f==='at'||f==='xat')renderLab()}
 async function act(a,i,v){i=+i;
  if(a==='new'){P=newProject();RES=null;save();renderLab()}
  else if(a==='open'){P=LS('labp',[])[i];RES=null;renderLab()}
@@ -441,7 +474,12 @@ async function act(a,i,v){i=+i;
  else if(a==='cmpA'&&RES&&RES.cmp)playBuf(RES.cmp.a);else if(a==='cmpB'&&RES&&RES.cmp)playBuf(RES.cmp.b);
  else if(a==='bp'){const sc=P.sections[i];sc.bp=(sc.bp||0)+ +v;save();renderLab()}
  else if(a==='brs'){const sc=P.sections[i];sc.rs=!sc.rs;save();renderLab()}
- else if(a==='bpr'){const sc=P.sections[i];sc.bp=0;sc.rs=false;save();renderLab()}
+ else if(a==='bpr'){const sc=P.sections[i];sc.bp=0;sc.rs=false;sc.at=null;save();renderLab()}
+  else if(a==='atp'){const sc=P.sections[i];if(v==='clr')sc.at=null;else sc.at=Math.max(1,(sc.at||curBar(i))+ +v);save();renderLab()}
+  else if(a==='stp')stopL();
+  else if(a==='xadd')beatSheet(i);
+  else if(a==='xdel'){P.sections[i].x=null;save();renderLab()}
+  else if(a==='xloop'){const x=P.sections[i].x;if(x){x.loop=x.loop===false;save();renderLab()}}
  else if(a==='hb'){toast('Preparing the beat…');try{playBuf(await guideBuf(i))}catch(e){toast('Could not play the beat')}}
  else if(a==='create')create();
  else if(a==='resAdd'){const fl=new File([RES.blob],RES.name,{type:RES.blob.type});await addFiles([fl],'lab');
@@ -546,8 +584,8 @@ async function create(){fixP(P);if(!P.sections.some(s=>tkOf(s)))return toast('Re
  BUSY=false;$('#busy').classList.remove('on');renderLab();setTimeout(()=>window.scrollTo(0,document.body.scrollHeight),80)}
 const lab=$('#lab');
 lab.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b)act(b.dataset.a,b.dataset.i,b.dataset.v)});
-lab.addEventListener('input',e=>{const f=e.target.dataset.f;if(['name','artist','lyr','vb','vv','vk','sy'].includes(f))setField(e.target)});
+lab.addEventListener('input',e=>{const f=e.target.dataset.f;if(['name','artist','lyr','vb','vv','vk','sy','xvol'].includes(f))setField(e.target)});
 lab.addEventListener('change',e=>{if(e.target.dataset.lite!==undefined){SV('lite',e.target.checked);return}
- const f=e.target.dataset.f;if(f&&!['name','artist','lyr','vb','vv','vk','sy'].includes(f))setField(e.target)});
+ const f=e.target.dataset.f;if(f&&!['name','artist','lyr','vb','vv','vk','sy','xvol'].includes(f))setField(e.target)});
 R.lab=renderLab;
 })();
