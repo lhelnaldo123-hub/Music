@@ -88,7 +88,7 @@ async function fx(d,sr,P,opt){
  if(opt.dbl){[[.018,.31],[.027,.43]].forEach(([dt,fq])=>{                       // two slightly moving delayed copies = a "doubled" voice
   const dl=oc.createDelay(.1);dl.delayTime.value=dt;const lf=oc.createOscillator(),ld=oc.createGain();lf.frequency.value=fq;ld.gain.value=.003;lf.connect(ld);ld.connect(dl.delayTime);lf.start();
   const g=oc.createGain();g.gain.value=.38;mk.connect(dl);dl.connect(g);g.connect(out)})}
- if(opt.rev>0){const len=Math.round(sr*1.5),ir=oc.createBuffer(1,len,sr),ch=ir.getChannelData(0);for(let i=0;i<len;i++)ch[i]=(Math.random()*2-1)*Math.pow(1-i/len,3);
+ if(opt.rev>0){const len=Math.round(sr*1.5),ir=oc.createBuffer(1,len,sr),ch=ir.getChannelData(0);let lp=0;for(let i=0;i<len;i++){lp+=((Math.random()*2-1)-lp)*(.5-.42*i/len);ch[i]=lp*1.9*Math.pow(1-i/len,3)}
   const cv=oc.createConvolver();cv.buffer=ir;const g=oc.createGain();g.gain.value=opt.rev/100*.55;mk.connect(cv);cv.connect(g);g.connect(out)}
  if(opt.echo>0){const dl=oc.createDelay(1);dl.delayTime.value=P.ed||.18;const lp=oc.createBiquadFilter();lp.type='lowpass';lp.frequency.value=3000;
   const fb=oc.createGain();fb.gain.value=.3;const g=oc.createGain();g.gain.value=opt.echo/100*.5;mk.connect(dl);dl.connect(lp);lp.connect(g);g.connect(out);lp.connect(fb);fb.connect(dl)}
