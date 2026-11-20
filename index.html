@@ -218,7 +218,7 @@ const CFG={
  ADSENSE_SLOT:'',            // your ad-unit slot id, e.g. '1234567890'
  HOUSE_ADS:[                 // your own sponsor ads (used when AdSense is empty)
   {t:'Advertise here 📢',d:'Reach thousands of music lovers. Tap to contact us.',c:'#ff8a3d,#c2185b',u:'https://wa.me/233599428017'},
-  {t:'Go Pro 👑',d:'Remove all ads and unlock the 400% booster.',c:'#7a5cff,#2b1a8a',u:'#pro'}
+  {t:'Go Pro 👑',d:'Remove all ads and unlock the 300% booster.',c:'#7a5cff,#2b1a8a',u:'#pro'}
  ],
  INTERSTITIAL_EVERY:4,       // show a full-screen ad after every N songs (free users)
  REWARD_MINUTES:60,          // minutes ad-free after watching a reward ad
@@ -510,7 +510,7 @@ addEventListener('keydown',e=>{if(/INPUT|TEXTAREA/.test(e.target.tagName))return
 const BANDS=[31,62,125,250,500,1000,2000,4000,8000,16000],BL=['31','62','125','250','500','1k','2k','4k','8k','16k'];
 const PRE={Flat:[0,0,0,0,0,0,0,0,0,0],'Bass Boost':[7,6,5,3,1,0,0,0,0,0],'Bass Cut':[-6,-5,-4,-2,0,0,0,0,0,0],'Treble Boost':[0,0,0,0,0,1,3,5,6,7],Vocal:[-3,-2,-1,1,3,4,4,2,0,-1],Rock:[5,4,3,1,-1,-1,1,3,4,5],Pop:[-1,1,3,4,3,0,-1,-1,1,2],Jazz:[3,2,1,2,-1,-1,0,1,2,3],Classical:[4,3,2,1,-1,-1,0,2,3,4],'Hip-Hop':[6,5,3,3,-1,-1,1,-1,2,3],Dance:[6,5,2,0,0,-3,-4,-4,0,0],Electronic:[5,4,1,0,-2,2,1,1,4,5],Acoustic:[4,4,3,1,1,1,2,3,3,2],Loudness:[6,4,1,0,-1,-1,0,1,4,6],Speech:[-4,-3,-1,1,3,4,4,2,0,-2],'Small Speakers':[5,5,4,3,1,0,-1,-1,-2,-2]};
 let ctx,an,gP,fl=[],bsh,dry,wet,conv,mixG,nrm,bst,lim,pan;
-function impulse(){const n=Math.floor(ctx.sampleRate*1.8),b=ctx.createBuffer(2,n,ctx.sampleRate);for(let c=0;c<2;c++){const d=b.getChannelData(c);for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/n,2.6)}return b}
+function impulse(){const n=Math.floor(ctx.sampleRate*1.8),b=ctx.createBuffer(2,n,ctx.sampleRate);for(let c=0;c<2;c++){const d=b.getChannelData(c);let lp=0;for(let i=0;i<n;i++){lp+=((Math.random()*2-1)-lp)*(.5-.42*i/n);d[i]=lp*1.9*Math.pow(1-i/n,2.6)}}return b}
 function initAudio(){if(ctx)return;try{ctx=new(window.AudioContext||window.webkitAudioContext)();let p=ctx.createMediaElementSource(aL);
  gP=ctx.createGain();p.connect(gP);p=gP;
  fl=BANDS.map((f,i)=>{const b=ctx.createBiquadFilter();b.type=i===0?'lowshelf':i===9?'highshelf':'peaking';b.frequency.value=f;b.Q.value=1.1;p.connect(b);p=b;return b});
@@ -518,10 +518,11 @@ function initAudio(){if(ctx)return;try{ctx=new(window.AudioContext||window.webki
  mixG=ctx.createGain();dry=ctx.createGain();wet=ctx.createGain();conv=ctx.createConvolver();conv.buffer=impulse();
  bsh.connect(dry);dry.connect(mixG);bsh.connect(conv);conv.connect(wet);wet.connect(mixG);
  nrm=ctx.createDynamicsCompressor();mixG.connect(nrm);bst=ctx.createGain();nrm.connect(bst);
- lim=ctx.createDynamicsCompressor();lim.threshold.value=-2;lim.knee.value=0;lim.ratio.value=20;lim.attack.value=.002;lim.release.value=.12;bst.connect(lim);
- let o=lim;if(ctx.createStereoPanner){pan=ctx.createStereoPanner();lim.connect(pan);o=pan}
+ lim=ctx.createDynamicsCompressor();lim.threshold.value=-6;lim.knee.value=3;lim.ratio.value=20;lim.attack.value=.001;lim.release.value=.15;bst.connect(lim);
+ const sc=ctx.createWaveShaper(),cv=new Float32Array(2048);for(let i=0;i<2048;i++){const x=i/1023.5-1;cv[i]=Math.tanh(x*1.2)/Math.tanh(1.2)*.97}sc.curve=cv;sc.oversample='4x';lim.connect(sc);
+ let o=sc;if(ctx.createStereoPanner){pan=ctx.createStereoPanner();lim.connect(pan);o=pan}
  an=ctx.createAnalyser();an.fftSize=128;o.connect(an);an.connect(ctx.destination);applyFx()}catch(e){ctx=null}}
-const maxBoost=()=>isPro()?400:200;
+const maxBoost=()=>isPro()?300:150;
 function applyFx(){if(!ctx)return;const s=S.set;fl.forEach((f,i)=>f.gain.value=s.gains[i]);gP.gain.value=Math.pow(10,s.pre/20);bsh.gain.value=s.bass/100*12;wet.gain.value=s.rev/100*.7;dry.gain.value=1-s.rev/100*.25;
  nrm.threshold.value=s.norm?-26:0;nrm.ratio.value=s.norm?5:1;nrm.knee.value=s.norm?30:0;bst.gain.value=Math.min(s.boost,maxBoost())/100;if(pan)pan.pan.value=s.bal/100}
 const fxSave=()=>{SV('set',S.set);applyFx()};
@@ -546,7 +547,7 @@ function buildLive(){const p=$('#presets');p.innerHTML='';
  const sp=$('#speeds');sp.innerHTML='';[.5,.75,1,1.25,1.5,2].forEach(v=>{const b=document.createElement('button');b.className='chip'+(S.set.speed===v?' on':'');b.textContent=v+'x';b.onclick=()=>setSpeed(v);sp.append(b)});
  const sl=$('#sleeps');sl.innerHTML='';[0,15,30,45,60,'end'].forEach(m=>{const b=document.createElement('button');b.className='chip';b.textContent=m==='end'?'End of song':m?m+' min':'Off';b.onclick=()=>setSleep(m);sl.append(b)});
  $('#normB').textContent=S.set.norm?'On':'Off';$('#normB').classList.toggle('on',S.set.norm)}
-function boostNote(){$('#boostNote').textContent=S.set.boost>150?'⚠️ High boost can distort sound — keep your phone volume low.':isPro()?'Pro booster up to 400% with built-in limiter.':'Free booster up to 200%. Pro unlocks 400% 👑'}
+function boostNote(){$('#boostNote').textContent=S.set.boost>150?'⚠️ High boost can distort sound — keep your phone volume low.':isPro()?'Pro booster up to 300% with built-in limiter.':'Free booster up to 200%. Pro unlocks 400% 👑'}
 function toggleNorm(){initAudio();S.set.norm=!S.set.norm;fxSave();buildLive()}
 let sleepT;function setSleep(m){clearTimeout(sleepT);sleepEnd=false;$('#sleepTxt').textContent=m==='end'?'End of song':m?m+' min':'Off';
  if(m==='end'){sleepEnd=true;toast('Music will stop when this song ends')}
@@ -580,7 +581,7 @@ function showAd(kind){if(adfree())return;const reward=kind==='reward',left0=rewa
 function renderPro(){const b=$('#proBody');const ok=isPro(),rw=LS('rew',0)>Date.now();
  const wa=`https://wa.me/${CFG.OWNER_WHATSAPP}?text=${encodeURIComponent('Hello, I want LB Music Pro ('+CFG.PRICE+'). Please send me the payment details.')}`;
  b.innerHTML=`<div class="pro-h"><div style="font-size:46px">👑</div><h2>LB Music Pro</h2><p>${ok?'You are Pro — thank you! 💛':CFG.PRICE}</p></div>
- <ul class="ft"><li>🚫 No ads at all</li><li>🔊 Volume booster up to 400% (free: 200%)</li><li>🎛️ Save your own equalizer presets</li><li>⬇️ Save online songs for offline listening</li><li>🎨 Premium colour themes (Royal, Aurora, AMOLED)</li><li>💬 Priority support</li></ul>`;
+ <ul class="ft"><li>🚫 No ads at all</li><li>🔊 Volume booster up to 300% (free: 150%)</li><li>🎛️ Save your own equalizer presets</li><li>⬇️ Save online songs for offline listening</li><li>🎨 Premium colour themes (Royal, Aurora, AMOLED)</li><li>💬 Priority support</li></ul>`;
  if(!ok){const s=document.createElement('div');s.className='set';s.innerHTML='<b>Get Pro</b><div class="mut">Pay by Mobile Money, then enter the code we send you.</div>';
   const a=document.createElement('button');a.className='pill pr';a.textContent='💬 Buy on WhatsApp';a.onclick=()=>window.open(wa,'_blank');s.append(a);
   if(CFG.PAY_LINK){const p=document.createElement('button');p.className='pill pr';p.textContent='💳 Pay online';p.onclick=()=>window.open(CFG.PAY_LINK,'_blank');s.append(p)}
@@ -600,7 +601,7 @@ const IS=[
  {e:'🌍',t:'Search everything',p:'Open <b>Search</b>. <b>📱 My music</b> works offline. <b>🌍 Online</b> finds real songs to stream — full songs from independent artists and 30-second previews.'},
  {e:'🎤',t:'A player that does more',p:'Tap the mini player to open it. Tap the cover to see <b>lyrics that scroll with the song</b>. Use ⋮ for playlists, queue, sleep timer and more.'},
  {e:'🎛️',t:'Sound Studio',p:'Open <b>Studio</b> for a 10-band equalizer, bass boost, reverb, balance and a <b>volume booster</b>. Pick a preset or drag the sliders and watch the curve move.'},
- {e:'👑',t:'Go Pro & make it yours',p:'Pick colour themes in Settings. <b>Pro</b> removes ads and unlocks the 400% booster, saving online songs and more. Free users can watch one ad for ad-free time.'},
+ {e:'👑',t:'Go Pro & make it yours',p:'Pick colour themes in Settings. <b>Pro</b> removes ads and unlocks the 300% booster, saving online songs and more. Free users can watch one ad for ad-free time.'},
  {e:'📲',t:'Install it',p:'Android/PC: browser menu → <b>Install app</b>. iPhone: Share → <b>Add to Home Screen</b>. Then open it like any app, even without internet.'}];
 let ii=0;
 function introShow(){const s=IS[ii];$('#iBody').innerHTML=`<div class="em">${s.e==='LOGO'?logo():s.e}</div><h2>${s.t}</h2><p>${s.p}</p>`;
@@ -614,7 +615,7 @@ let tx0=0;$('#intro').addEventListener('touchstart',e=>tx0=e.touches[0].clientX)
 function renderSettings(){const b=$('#setBody');b.innerHTML='';
  const box=(t,d)=>{const x=document.createElement('div');x.className='set';x.innerHTML=`<b>${t}</b><div class="mut">${d||''}</div>`;b.append(x);return x};
  const btn=(x,t,fn,c)=>{const y=document.createElement('button');y.className='pill '+(c||'');y.textContent=t;y.onclick=fn;x.append(y)};
- let x=box('👑 LB Music Pro',isPro()?'Pro is active — no ads, 400% booster and more.':'Remove ads and unlock everything.');btn(x,isPro()?'View Pro':'Go Pro',()=>show('pro'),'pr');
+ let x=box('👑 LB Music Pro',isPro()?'Pro is active — no ads, 300% booster and more.':'Remove ads and unlock everything.');btn(x,isPro()?'View Pro':'Go Pro',()=>show('pro'),'pr');
  x=box('📁 Music folder',DIR?`Connected: <b>${esc(DIR.name)}</b>. New songs are added automatically every time you open the app.`:'Connect your music folder once — then it syncs by itself.');
  btn(x,DIR?'Change folder':'Connect folder',connectFolder);if(DIR){btn(x,'Sync now',()=>syncFolder(DIR,true));btn(x,'Disconnect',async()=>{DIR=null;await tx('kv','readwrite',k=>k.delete('dir'));renderSettings()},'dng')}
  x=box('🎨 Colour themes','Colours put together. 👑 = Pro');const g=document.createElement('div');g.className='tg';
