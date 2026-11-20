@@ -62,7 +62,7 @@ function applyFx(n,t,ctx){const f=t.fx,at=ctx.currentTime;
 function buildGraph(ctx,dest,live){
  const G={ctx,tr:{},src:[]},mg=ctx.createGain();mg.gain.value=P.master/100;
  const lim=ctx.createDynamicsCompressor();lim.threshold.value=-3;lim.knee.value=0;lim.ratio.value=20;lim.attack.value=.002;lim.release.value=.1;mg.connect(lim);lim.connect(dest);G.master=mg;
- const len=Math.round(ctx.sampleRate*1.8),ir=ctx.createBuffer(2,len,ctx.sampleRate);for(let c=0;c<2;c++){const d=ir.getChannelData(c);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,3)}
+ const len=Math.round(ctx.sampleRate*1.8),ir=ctx.createBuffer(2,len,ctx.sampleRate);for(let c=0;c<2;c++){const d=ir.getChannelData(c);let lp=0;for(let i=0;i<len;i++){lp+=((Math.random()*2-1)-lp)*(.5-.42*i/len);d[i]=lp*1.9*Math.pow(1-i/len,3)}}
  const cv=ctx.createConvolver();cv.buffer=ir;const rg=ctx.createGain();rg.gain.value=.7;cv.connect(rg);rg.connect(mg);
  if(live){G.an=ctx.createAnalyser();G.an.fftSize=512;lim.connect(G.an)}
  P.tracks.forEach(t=>{const bq=(ty,fr,q)=>{const x=ctx.createBiquadFilter();x.type=ty;x.frequency.value=fr;x.Q.value=q||.7;return x},
