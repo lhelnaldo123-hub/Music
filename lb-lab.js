@@ -7,7 +7,7 @@
 if(window.__lbLab)return;window.__lbLab=1;
 const $=s=>document.querySelector(s),
 E=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])),
-AC=window.AudioContext||window.webkitAudioContext,SR=32000,
+AC=window.AudioContext||window.webkitAudioContext,SR=44100,
 sleep=ms=>new Promise(r=>setTimeout(r,ms)),
 fm=t=>{t=Math.round(t||0);return Math.floor(t/60)+':'+String(t%60).padStart(2,'0')},
 kvPut=(id,blob)=>tx('kv','readwrite',k=>k.put({id,blob})),
@@ -266,7 +266,7 @@ function playBuf(buf){stopL();const c=lc(),s=c.createBufferSource();s.buffer=buf
 function listenTake(guide,vb,off){stopL();const c=lc(),b=c.createBufferSource();b.buffer=guide;b.connect(c.destination);const v=c.createBufferSource();v.buffer=vb;const g=c.createGain();g.gain.value=1.3;v.connect(g);g.connect(c.destination);const t=c.currentTime+.1;b.start(t);v.start(t,Math.min(off,vb.duration-.01));LP=[b,v];let n=2;[b,v].forEach(x=>x.onended=()=>{if(LP.includes(x)&&--n<=0){LP=[];mpHide()}});mpShow(1,'🎧 Part preview')}
 
 /* ---- vocal studio chain + final mix ---- */
-function ir(oc,sec){const n=Math.floor(oc.sampleRate*sec),b=oc.createBuffer(2,n,oc.sampleRate);for(let c=0;c<2;c++){const d=b.getChannelData(c);for(let i=0;i<n;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/n,2.8)}return b}
+function ir(oc,sec){const n=Math.floor(oc.sampleRate*sec),b=oc.createBuffer(2,n,oc.sampleRate);for(let c=0;c<2;c++){const d=b.getChannelData(c);let lp=0;for(let i=0;i<n;i++){lp+=((Math.random()*2-1)-lp)*(.5-.42*i/n);d[i]=lp*1.9*Math.pow(1-i/n,2.8)}}return b}
 function vchain(oc,M,p){const fx=FX[p.fx]||FX['Clean Studio'],inp=oc.createGain(),bq=(type,f,gain,q)=>{const x=oc.createBiquadFilter();x.type=type;x.frequency.value=f;if(gain!=null)x.gain.value=gain;if(q)x.Q.value=q;return x};
  const hp=bq('highpass',95),e1=bq('peaking',300,-2,1),e2=bq('peaking',3000,fx.pres,.9),e3=bq('highshelf',10000,fx.air),e4=bq('lowshelf',200,fx.warm);
  const cm=oc.createDynamicsCompressor();cm.threshold.value=-26;cm.ratio.value=4;cm.knee.value=10;cm.attack.value=.006;cm.release.value=.18;
@@ -315,7 +315,7 @@ function loadLame(){return window.lamejs?Promise.resolve(true):new Promise(r=>{c
 async function mp3Async(buf,onProg,lite){const ch=lite?1:Math.min(2,buf.numberOfChannels),n=buf.length,sr=buf.sampleRate,d=[];
  if(lite&&buf.numberOfChannels>1){const L=buf.getChannelData(0),R=buf.getChannelData(1),m=new Float32Array(n);for(let i=0;i<n;i++)m[i]=(L[i]+R[i])/2;d.push(m)}else for(let c=0;c<ch;c++)d.push(buf.getChannelData(c));
  let pk=0;for(let c=0;c<ch;c++){const a=d[c];for(let i=0;i<n;i++){const x=a[i]<0?-a[i]:a[i];if(x>pk)pk=x}}
- const g=pk>0.0001?Math.min(3,0.97/pk):1,enc=new lamejs.Mp3Encoder(ch,sr,lite?64:128),B=1152*20,out=[];
+ const g=pk>0.0001?Math.min(3,0.97/pk):1,enc=new lamejs.Mp3Encoder(ch,sr,lite?96:192),B=1152*20,out=[];
  const cv=(a,i,e)=>{const o=new Int16Array(e-i);for(let j=i;j<e;j++){const x=Math.max(-1,Math.min(1,a[j]*g));o[j-i]=x<0?x*32768:x*32767}return o};
  for(let i=0;i<n;i+=B){const e=Math.min(n,i+B),m=ch===2?enc.encodeBuffer(cv(d[0],i,e),cv(d[1],i,e)):enc.encodeBuffer(cv(d[0],i,e));
   if(m.length)out.push(new Uint8Array(m));onProg&&onProg(i/n);await new Promise(r=>setTimeout(r,0))}
@@ -336,7 +336,7 @@ async function record(i,opt={}){const sec=P.sections[i],bpb=240/P.beat.bpm,win=o
  const ctx=lc();let mv=null,moff=0;if(lay){const tk0=tkOf(sec);if(tk0){try{mv=await takeBuf(tk0.id);moff=tk0.lead+(P.sync||0)/1000}catch(e){}}}
  const attempt=async()=>{for(let n=3;n>0&&!cancel;n--){big.textContent=n;await sleep(800)}
   if(cancel)return null;big.textContent='🎙';btn.innerHTML='<button class="lbtn rec" id="rStop">⏹ Stop</button>';
-  const mr=new MediaRecorder(st),ch=[];mr.ondataavailable=e=>e.data.size&&ch.push(e.data);const fin=new Promise(r=>mr.onstop=r);
+  const mr=new MediaRecorder(st,{audioBitsPerSecond:192000}),ch=[];mr.ondataavailable=e=>e.data.size&&ch.push(e.data);const fin=new Promise(r=>mr.onstop=r);
   const t0=performance.now();mr.start();await sleep(150);
   const bs=ctx.createBufferSource();bs.buffer=guide;bs.connect(ctx.destination);const lead=(performance.now()-t0)/1000,ts=ctx.currentTime;bs.start();let x2=null;if(mv){x2=ctx.createBufferSource();x2.buffer=mv;const g2=ctx.createGain();g2.gain.value=1.1;x2.connect(g2);g2.connect(ctx.destination);x2.start(0,Math.min(moff,mv.duration-.01))}
   let over=false;const stop=()=>{if(over)return;over=true;try{bs.stop()}catch(e){}try{x2&&x2.stop()}catch(e){}setTimeout(()=>{if(mr.state!=='inactive')mr.stop()},500)};
@@ -560,7 +560,7 @@ function bgMp3(buf,me,base){
     const a=$('#lab audio');if(!BUSY&&(!a||a.paused))renderLab()}
    else if(m.err){w.terminate();upd('')}};
   w.onerror=()=>{w.terminate();upd('')};
-  w.postMessage({src:new URL('lame.min.js',location.href).href,ch,sr:buf.sampleRate,kb:lite?64:128,g:pk>.0001?Math.min(3,.97/pk):1,d},d.map(a=>a.buffer))
+  w.postMessage({src:new URL('lame.min.js',location.href).href,ch,sr:buf.sampleRate,kb:lite?96:192,g:pk>.0001?Math.min(3,.97/pk):1,d},d.map(a=>a.buffer))
  }catch(e){console.error(e)}}
 async function create(){fixP(P);if(!P.sections.some(s=>tkOf(s)))return toast('Record at least one part first 🎤');
  stopL();BUSY=true;$('#busy').classList.add('on');const msg=$('#bMsg'),bar=$('#bBar');
