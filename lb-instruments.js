@@ -197,7 +197,7 @@ async function recSample(){const i=S.sel;
  if(MR){MR.stop();return}
  if(!navigator.mediaDevices||!window.MediaRecorder)return toast('Recording is not supported in this browser');
  let st;try{st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}})}catch(e){return toast('Allow the microphone first')}
- const ch=[],mr=new MediaRecorder(st);MR=mr;mr.ondataavailable=e=>e.data.size&&ch.push(e.data);
+ const ch=[],mr=new MediaRecorder(st,{audioBitsPerSecond:192000});MR=mr;mr.ondataavailable=e=>e.data.size&&ch.push(e.data);
  mr.onstop=async()=>{clearTimeout(tm);st.getTracks().forEach(t=>t.stop());MR=null;tools();
   try{await setSample(i,await new Blob(ch,{type:mr.mimeType||'audio/webm'}).arrayBuffer());toast('Sound saved on pad '+PADS[i]+' ✅');padDown(i)}catch(e){toast('Could not read the recording')}};
  mr.start();tools();toast('Recording… tap Stop when done (max 4 seconds)');const tm=setTimeout(()=>{if(mr.state!=='inactive')mr.stop()},4000)}
