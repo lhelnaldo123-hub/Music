@@ -312,6 +312,13 @@ async function exportMix(){
 $('#mtUn').onclick=()=>{if(!H.length||REC)return toast('Nothing to undo');if(playing)halt();RE.push(JSON.stringify(P));P=JSON.parse(H.pop());save();render()};
 $('#mtRe').onclick=()=>{if(!RE.length||REC)return toast('Nothing to redo');if(playing)halt();H.push(JSON.stringify(P));P=JSON.parse(RE.pop());save();render()};
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&(playing||REC))stopAll()});
-window.LBMT={get:()=>P,pos:v=>{POS=v},render};   // small hook (handy for testing)
+window.LBMT={get:()=>P,pos:v=>{POS=v},render,
+ bpm:v=>{if(v){P.bpm=Math.max(40,Math.min(240,Math.round(v)));save();if(PAGE==='mt')render()}return P.bpm},
+ /* used by lb-instruments.js: put a rendered mono clip on a track (made if needed) at the playhead */
+ async addClip(d,sr,name,tname){const lim=pro()?PRO_TRACKS:FREE_TRACKS;let t=P.tracks.find(x=>x.name===tname);
+  if(!t){if(P.tracks.length>=lim)t=P.tracks.find(x=>!x.clips.length)||P.tracks[P.tracks.length-1];else{t=newTrack(tname,P.tracks.length);P.tracks.push(t)}}
+  const id='mt_'+uid(),b=ax().createBuffer(1,d.length,sr);b.copyToChannel(d,0);await kvPut(id,wavMono(d,sr));BUF['k:'+id]={buf:b,pk:peaks(b)};
+  let st=sn(POS);if(t.clips.some(c=>c.start<st+b.duration&&c.start+c.dur>st))st=sn(t.clips.reduce((m,c)=>Math.max(m,c.start+c.dur),0));
+  snap();t.clips.push({id:uid(),src:'k:'+id,start:st,off:0,dur:b.duration,gain:100,name:name||'Instrument'});save();if(PAGE==='mt')render();return st}};   // small hook (handy for testing)
 R.mt=()=>{if(!built||!$('#mtSc'))render();else if(!playing&&!drag&&!REC)render()};
 })();
