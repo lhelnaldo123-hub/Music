@@ -17,8 +17,8 @@ SCL={Major:[0,2,4,5,7,9,11],Minor:[0,2,3,5,7,8,10],Chromatic:[0,1,2,3,4,5,6,7,8,
 /* voice presets: hp = low cut, eq = [type,Hz,dB,Q], th/ra = compressor, mk = makeup gain, rev/echo/dbl = defaults */
 const PRE={
  Natural:{hp:70,eq:[],th:-20,ra:2,mk:1.1,rev:0,echo:0,dbl:0},
- Clean:{hp:90,eq:[['peaking',3000,2.5,1],['highshelf',10000,2,0.7]],th:-24,ra:3,mk:1.3,rev:0,echo:0,dbl:0},
- Pop:{hp:100,eq:[['peaking',250,-2,1],['peaking',4000,3,1],['highshelf',11000,3,0.7]],th:-26,ra:4,mk:1.5,rev:18,echo:0,dbl:1},
+ Clean:{hp:90,eq:[['peaking',3000,2,1],['highshelf',10000,1,0.7]],th:-24,ra:3,mk:1.3,rev:0,echo:0,dbl:0},
+ Pop:{hp:100,eq:[['peaking',250,-2,1],['peaking',4000,2,1],['highshelf',11000,1.5,0.7]],th:-26,ra:4,mk:1.5,rev:18,echo:0,dbl:1},
  Rap:{hp:110,eq:[['peaking',200,-2,1],['peaking',3500,3,1.2]],th:-30,ra:6,mk:1.8,rev:5,echo:14,dbl:0,ed:.09},
  Radio:{hp:420,lp:3400,eq:[['peaking',1800,3,1]],th:-26,ra:5,mk:1.8,rev:0,echo:0,dbl:0},
  Warm:{hp:80,lp:9000,eq:[['peaking',200,3,0.9],['highshelf',8000,-3,0.7]],th:-24,ra:3,mk:1.3,rev:12,echo:0,dbl:0}
@@ -77,7 +77,28 @@ async function shift(d,sr,semi,hopS,bypass,onP){
  return out}
 
 /* ================= effects chain (EQ, compressor, doubling, reverb, echo) ================= */
+/* de-esser: tames harsh s / sh / ch sounds */
+/* De-esser: listens to the 5.5 kHz+ band; when it dominates the sound (s, sh, ch, t) it turns the highs down by up to about 8 dB, smoothly. */
+function deEss(x,sr){
+ const n=x.length,out=new Float32Array(n);
+ const w0=2*Math.PI*5500/sr,cs=Math.cos(w0),al=Math.sin(w0)/(2*.7071),a0=1+al,
+  b0=(1+cs)/2/a0,b1=-(1+cs)/a0,b2=b0,a1=-2*cs/a0,a2=(1-al)/a0,
+  lpA=1-Math.exp(-2*Math.PI*6500/sr);
+ let x1=0,x2=0,y1=0,y2=0,u1=0,u2=0,v1=0,v2=0,lp=0;
+ const k=ms=>Math.exp(-1/(sr*ms/1000)),eA=k(1),eR=k(30),gA=k(1.5),gR=k(45),TH=.28,MIN=.4;
+ let eh=0,ex=0,g=1;
+ for(let i=0;i<n;i++){
+  const s=x[i];
+  const t=b0*s+b1*x1+b2*x2-a1*y1-a2*y2;x2=x1;x1=s;y2=y1;y1=t;
+  const h=b0*t+b1*u1+b2*u2-a1*v1-a2*v2;u2=u1;u1=t;v2=v1;v1=h;           // detector band (not heard)
+  const ah=h<0?-h:h,as=s<0?-s:s;
+  eh=ah>eh?ah+(eh-ah)*eA:ah+(eh-ah)*eR;ex=as>ex?as+(ex-as)*eA:as+(ex-as)*eR;
+  const r=ex>.004?eh/ex:0,tg=r>TH?Math.max(MIN,TH/r):1;
+  g=tg<g?tg+(g-tg)*gA:tg+(g-tg)*gR;
+  lp+=lpA*(s-lp);out[i]=lp+g*(s-lp)}                                  // smooth high-shelf cut
+ return out}
 async function fx(d,sr,P,opt){
+ d=deEss(d,sr);
  const tail=Math.round(sr*1.4),oc=new OAC(1,d.length+tail,sr),b=oc.createBuffer(1,d.length,sr);b.copyToChannel(d,0);
  const s=oc.createBufferSource();s.buffer=b;let node=s;const chain=x=>{node.connect(x);node=x;return x};
  const f=(t,fr,g,q)=>{const x=oc.createBiquadFilter();x.type=t;x.frequency.value=fr;if(g!=null)x.gain.value=g;x.Q.value=q||.7;return chain(x)};
