@@ -13,7 +13,7 @@ const BASE={bass:36,lead:60,pluck:72};
 const KITS={Classic:{p:1,d:1,f:1},Trap:{p:.7,d:1.8,f:1.3,pro:1},Afro:{p:1.2,d:.7,f:.8,pro:1},'Lo-fi':{p:.9,d:1.2,f:.5,pro:1}};
 const NN=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const LENS=[1,2,3,4,5,6,8,10];
-const QUAL={l:['Lite',22050],n:['Normal',32000],h:['HD',44100]};
+const QUAL={l:['Lite',32000],n:['Normal',44100],h:['HD',48000]};
 const PRE={
  'Hip-hop':{bpm:90,kick:'1000001000100000',snare:'0000100000001000',hat:'1010101010101010',bass:'1000001000300000'},
  'Pop':{bpm:110,kick:'1000100010001000',snare:'0000100000001000',hat:'1010101010101010',bass:'1000100010002000'},
