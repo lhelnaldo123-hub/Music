@@ -1,5 +1,5 @@
 /* LB Music service worker – works offline. Bump VERSION whenever you change any file. */
-const VERSION='lb-v18';
+const VERSION='lb-v19';
 const SHELL=['./','./index.html','./lb-extra.js','./lb-lab.js','./lb-studio.js','./lb-record.js','./lb-vocal.js','./lb-export.js','./lb-multi.js','./lb-master.js','./lame.min.js','./manifest.json','./icon-192.png','./icon-512.png','./icon-192-1.png','./icon-512-1.png','./icon-maskable-512.png'];
 self.addEventListener('install',e=>{
   e.waitUntil(caches.open(VERSION).then(c=>Promise.all(SHELL.map(u=>c.add(u).catch(()=>{})))).then(()=>self.skipWaiting()));
