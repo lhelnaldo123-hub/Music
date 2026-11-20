@@ -55,7 +55,7 @@ document.body.insertAdjacentHTML('beforeend',`
  <div class="chips" id="vTabs"><button class="chip on" data-t="rel">▶ Related songs</button><button class="chip" data-t="ly">🎤 Lyrics</button></div>
  <div id="vRel"></div><div id="vLy" style="display:none"></div></div>
 <div id="recov"><div class="vh"><b id="rTitle"></b><button class="ib" id="rX">✕</button></div><div id="rLy"></div><div id="rBig">…</div><div id="rBar"><i></i></div><div class="rb" id="rBtns"></div><p class="mut" style="text-align:center;margin-top:8px">🎧 Use headphones so the beat is not picked up by the mic</p></div>
-<div id="busy"><div class="spin"></div><h3 id="bMsg" style="margin-top:10px"></h3><p class="mut" style="margin-top:8px">Please keep the app open</p></div>`);
+<style>.pbar{width:70%;max-width:320px;height:10px;background:#ffffff22;border-radius:8px;overflow:hidden;margin-top:14px}.pbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#1de9c6,#ff8a3d);transition:width .2s}</style><div id="busy"><div class="spin"></div><h3 id="bMsg" style="margin-top:10px"></h3><div class="pbar"><i id="bBar"></i></div><p class="mut" style="margin-top:8px">Please keep the app open</p></div>`);
 $('#nav').insertAdjacentHTML('beforeend','<button data-p="lab" onclick="show(\'lab\')"><span>🎙</span>Lab</button>');
 
 /* =====================================================================
@@ -250,13 +250,14 @@ function vchain(oc,M,p){const fx=FX[p.fx]||FX['Clean Studio'],inp=oc.createGain(
  if(fx.rev){const cv=oc.createConvolver();cv.buffer=ir(oc,1.9);const rw=oc.createGain();rw.gain.value=fx.rev;out.connect(cv);cv.connect(rw);rw.connect(M)}
  if(fx.echo){const dl=oc.createDelay(2);dl.delayTime.value=60/p.beat.bpm*.75;const fb=oc.createGain();fb.gain.value=.32;const lp=bq('lowpass',3200),ew=oc.createGain();ew.gain.value=fx.echo;out.connect(dl);dl.connect(lp);lp.connect(fb);fb.connect(dl);lp.connect(ew);ew.connect(M)}
  return{inp,fx}}
-async function mixProject(p){await ensureBeat(p);const bar=240/p.beat.bpm,total=p.sections.reduce((a,s)=>a+s.bars*bar,0),tail=2.5;
+async function mixProject(p,onProg){await ensureBeat(p);const bar=240/p.beat.bpm,total=p.sections.reduce((a,s)=>a+s.bars*bar,0),tail=2.5;
  const oc=new OfflineAudioContext(2,Math.ceil((total+tail)*SR),SR),M=mst(oc,total+tail),bb=oc.createGain();bb.gain.value=p.vol.beat/100;bb.connect(M);
  sched(oc,bb,p,0,total+tail);const V=vchain(oc,M,p);let pos=0;
  p.sections.forEach(sec=>{const s0=pos;pos+=sec.bars*bar;const tk=tkOf(sec),buf=tk&&TB[tk.id];if(!buf)return;
   const off=Math.min(tk.lead+(p.sync||0)/1000,buf.duration-.05),dur=Math.max(.1,Math.min(sec.bars*bar+1.2,buf.duration-off));
   const s=oc.createBufferSource();s.buffer=buf;s.connect(V.inp);s.start(s0,off,dur);
   if(V.fx.dbl)[-1,1].forEach(d=>{const s2=oc.createBufferSource();s2.buffer=buf;s2.detune.value=d*7;const pn=oc.createStereoPanner();pn.pan.value=d*.7;const gd=oc.createGain();gd.gain.value=V.fx.dbl*(sec.type==='chorus'?1:.4)*.6;s2.connect(gd);gd.connect(pn);pn.connect(V.inp);s2.start(s0+.02,off,dur)})});
+ if(onProg&&oc.suspend){const T=total+tail,st=Math.max(2,T/25);for(let t=st;t<T-.5;t+=st){const q=Math.floor(t*SR/128)*128/SR;try{oc.suspend(q).then(()=>{onProg(q/T);oc.resume()}).catch(()=>{})}catch(e){}}}
  return oc.startRendering()}
 function wav(buf){const ch=buf.numberOfChannels,n=buf.length,sr=buf.sampleRate,ab=new ArrayBuffer(44+n*ch*2),v=new DataView(ab),w=(o,s)=>[...s].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));
  w(0,'RIFF');v.setUint32(4,36+n*ch*2,true);w(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,ch,true);v.setUint32(24,sr,true);v.setUint32(28,sr*ch*2,true);v.setUint16(32,ch*2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,n*ch*2,true);
@@ -391,7 +392,7 @@ function renderLab(){if(BUSY)return;const r=$('#lab');
   <p class="mut">If your voice sounds late against the beat, raise Mic sync (Bluetooth needs more).</p></div>
  <label class="mut" style="display:flex;gap:8px;align-items:center;margin:10px 2px"><input type="checkbox" data-lite ${LS('lite',false)?'checked':''}> Lite mode – smaller file, faster save (for old phones)</label>
  <button class="lbtn pr" data-a="create" style="width:100%;padding:16px;font-size:16px">🎶 Create my song</button>
- ${RES?`<div class="lc"><b>🎉 Your song is ready</b><audio controls src="${RES.url}" style="width:100%;margin-top:10px"></audio><div class="lrow"><button class="lbtn pr" data-a="resAdd">➕ Add to my music</button><button class="lbtn" data-a="resDl">⬇ Download</button><button class="lbtn" data-a="resSh">📤 Share</button></div></div>`:''}`}
+ ${RES?`<div class="lc"><b>🎉 Your song is ready</b><div class="mut" id="mp3st" style="margin-top:6px">${RES.st||''}</div><audio controls src="${RES.url}" style="width:100%;margin-top:10px"></audio><div class="lrow"><button class="lbtn pr" data-a="resAdd">➕ Add to my music</button><button class="lbtn" data-a="resDl">⬇ Download</button><button class="lbtn" data-a="resSh">📤 Share</button></div></div>`:''}`}
 function setField(t){const f=t.dataset.f,i=+t.dataset.i,v=t.value;if(!P)return;
  if(f==='name')P.name=v;else if(f==='artist')P.artist=v;else if(f==='bpm')P.beat.bpm=Math.max(50,Math.min(200,+v||90));
  else if(f==='key')P.beat.key=+v;else if(f==='mode')P.beat.mode=v;else if(f==='bars')P.sections[i].bars=+v;else if(f==='lyr')P.sections[i].lyrics=v;
@@ -418,13 +419,43 @@ async function act(a,i,v){i=+i;
   try{const sg=S.songs.find(x=>x.name===fl.name&&x.size===fl.size);if(sg){sg.title=P.name||sg.title;sg.artist=P.artist||sg.artist;sg.wf=RES.wf;sg.bpm=P.beat.bpm;if(!sg.art)sg.art=await coverBlob(sg.title,sg.artist);await dbPut(sg);refresh()}}catch(e){console.error(e)}}
  else if(a==='resDl'){const l=document.createElement('a');l.href=RES.url;l.download=RES.name;l.click()}
  else if(a==='resSh'){try{const f=new File([RES.blob],RES.name,{type:RES.blob.type});if(navigator.canShare?.({files:[f]}))await navigator.share({files:[f],title:P.name});else toast('Sharing not supported here — use Download')}catch(e){}}}
-async function create(){if(!P.sections.some(s=>tkOf(s)))return toast('Record at least one part first 🎙');
- stopL();BUSY=true;$('#busy').classList.add('on');const msg=$('#bMsg');msg.textContent='Preparing your recordings…';
- try{await ensureBeat(P);for(const s of P.sections){const tk=tkOf(s);if(tk&&!TB[tk.id])await takeBuf(tk.id)}
-  msg.textContent='Mixing your song like a studio…';await sleep(80);const buf=await mixProject(P);msg.textContent='Saving… 0%';await sleep(30);
-  const pg=f=>{msg.textContent='Saving… '+Math.round(f*100)+'%'};let blob;
-  if(await loadLame()){try{blob=await mp3Async(buf,pg,LS('lite',false))}catch(e){console.error(e)}}
-  if(!blob)blob=await wavAsync(buf,pg);if(RES)URL.revokeObjectURL(RES.url);RES={wf:peaksOf(buf),blob,url:URL.createObjectURL(blob),name:`${P.artist||'Me'} - ${P.name||'My song'}.${blob.type==='audio/mpeg'?'mp3':'wav'}`.replace(/[\\/:*?"<>|]/g,'')};toast('Your song is ready 🎉')}
+/* MP3 is made in a background worker so the song is ready (as WAV) straight after mixing */
+const WK=`self.onmessage=e=>{const {src,ch,sr,kb,g,d}=e.data;try{importScripts(src)}catch(x){self.postMessage({err:1});return}
+try{const enc=new lamejs.Mp3Encoder(ch,sr,kb),B=1152*20,out=[],n=d[0].length;
+const cv=(a,i,e)=>{const o=new Int16Array(e-i);for(let j=i;j<e;j++){const x=Math.max(-1,Math.min(1,a[j]*g));o[j-i]=x<0?x*32768:x*32767}return o};
+let last=-1;for(let i=0;i<n;i+=B){const e=Math.min(n,i+B),m=ch===2?enc.encodeBuffer(cv(d[0],i,e),cv(d[1],i,e)):enc.encodeBuffer(cv(d[0],i,e));if(m.length)out.push(new Uint8Array(m));const p=Math.floor(i/n*100);if(p!==last){last=p;self.postMessage({p:i/n})}}
+const f=enc.flush();if(f.length)out.push(new Uint8Array(f));self.postMessage({done:1,blob:new Blob(out,{type:'audio/mpeg'})})}catch(x){self.postMessage({err:1})}}`;
+function bgMp3(buf,me,base){
+ if(!window.Worker||!window.Blob)return;
+ try{const lite=LS('lite',false),ch=lite?1:Math.min(2,buf.numberOfChannels),n=buf.length,d=[];
+  if(lite&&buf.numberOfChannels>1){const L=buf.getChannelData(0),R=buf.getChannelData(1),m=new Float32Array(n);for(let i=0;i<n;i++)m[i]=(L[i]+R[i])/2;d.push(m)}
+  else for(let c=0;c<ch;c++)d.push(new Float32Array(buf.getChannelData(c)));
+  let pk=0;for(const a of d)for(let i=0;i<n;i++){const x=a[i]<0?-a[i]:a[i];if(x>pk)pk=x}
+  const w=new Worker(URL.createObjectURL(new Blob([WK],{type:'text/javascript'})));
+  const upd=t=>{me.st=t;const e=$('#mp3st');if(e&&RES===me)e.textContent=t};
+  upd('Making a smaller MP3 file… 0%  (you can already play it or add it to your music)');
+  w.onmessage=e=>{const m=e.data;
+   if(m.p!=null)upd('Making a smaller MP3 file… '+Math.round(m.p*100)+'%  (you can already play it or add it to your music)');
+   else if(m.done){w.terminate();if(RES!==me)return;me.blob=m.blob;me.url=URL.createObjectURL(m.blob);me.name=base+'.mp3';upd('MP3 ready ✅ (smaller file) — Download and Add now use the MP3');
+    const a=$('#lab audio');if(!BUSY&&(!a||a.paused))renderLab()}
+   else if(m.err){w.terminate();upd('')}};
+  w.onerror=()=>{w.terminate();upd('')};
+  w.postMessage({src:new URL('lame.min.js',location.href).href,ch,sr:buf.sampleRate,kb:lite?64:128,g:pk>.0001?Math.min(3,.97/pk):1,d},d.map(a=>a.buffer))
+ }catch(e){console.error(e)}}
+async function create(){if(!P.sections.some(s=>tkOf(s)))return toast('Record at least one part first 🎤');
+ stopL();BUSY=true;$('#busy').classList.add('on');const msg=$('#bMsg'),bar=$('#bBar');
+ const set=(t,f)=>{const v=Math.max(0,Math.min(100,Math.round(f*100)));msg.textContent=t+' '+v+'%';bar.style.width=v+'%'};
+ set('Preparing your recordings',0);
+ try{await ensureBeat(P);
+  const need=[...new Set(P.sections.map(tkOf).filter(Boolean).map(t=>t.id))].filter(id=>!TB[id]);let dn=0;
+  await Promise.all(need.map(id=>takeBuf(id).then(()=>set('Preparing your recordings',.1*(++dn/need.length)))));
+  set('Mixing your song',.1);await sleep(30);
+  const buf=await mixProject(P,f=>set('Mixing your song',.1+.5*f));
+  set('Saving',.6);await sleep(20);
+  const wb=await wavAsync(buf,f=>set('Saving',.6+.4*f));
+  if(RES)URL.revokeObjectURL(RES.url);
+  const base=`${P.artist||'Me'} - ${P.name||'My song'}`.replace(/[\\/:*?"<>|]/g,''),me=RES={wf:peaksOf(buf),blob:wb,url:URL.createObjectURL(wb),name:base+'.wav',st:''};
+  toast('Your song is ready 🎉');bgMp3(buf,me,base)}
  catch(e){console.error(e);toast('Could not create the song. Try fewer parts or a shorter song.')}
  BUSY=false;$('#busy').classList.remove('on');renderLab();setTimeout(()=>window.scrollTo(0,document.body.scrollHeight),80)}
 const lab=$('#lab');
