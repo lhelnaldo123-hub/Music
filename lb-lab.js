@@ -184,7 +184,7 @@ const ST={
 const styleOf=id=>ST[id]||LS('beats',{})[id]||ST.trap;
 const FL={intro:{pad:1,keys:1,hat:1},verse:{kick:1,snare:1,hat:1,bass:1,pad:.5},chorus:{kick:1,snare:1,hat:1,bass:1,pad:1,keys:1,clap:1,open:1},bridge:{pad:1,bass:1,keys:1},outro:{pad:1,keys:1}};
 const CH={m:[[0,0],[8,1],[3,1],[10,1]],M:[[0,1],[7,1],[9,0],[5,1]]};
-const FX={'Clean Studio':{rev:.16,echo:.10,dbl:.28,pres:3,air:3,warm:0},'Warm Radio':{rev:.08,echo:.05,dbl:.18,pres:2,air:1,warm:3},'Big Hall':{rev:.34,echo:.16,dbl:.35,pres:3,air:4,warm:0},'Trap Echo':{rev:.14,echo:.28,dbl:.30,pres:4,air:3,warm:0},'Club':{rev:.12,echo:.18,dbl:.40,pres:4,air:5,warm:-1},'Radio Loud':{rev:.05,echo:.03,dbl:.12,pres:5,air:2,warm:2},'Raw / Dry':{rev:0,echo:0,dbl:0,pres:0,air:0,warm:0}};
+const FX={'Clean Studio':{rev:.16,echo:.10,dbl:.28,pres:2,air:1,warm:0},'Warm Radio':{rev:.08,echo:.05,dbl:.18,pres:1.5,air:.5,warm:3},'Big Hall':{rev:.34,echo:.16,dbl:.35,pres:2,air:1.5,warm:0},'Trap Echo':{rev:.14,echo:.28,dbl:.30,pres:3,air:1.5,warm:0},'Club':{rev:.12,echo:.18,dbl:.40,pres:3,air:2,warm:-1},'Radio Loud':{rev:.05,echo:.03,dbl:.12,pres:3.5,air:1,warm:2},'Raw / Dry':{rev:0,echo:0,dbl:0,pres:0,air:0,warm:0}};
 const KEYS=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
 const TB={},EXT={},GUIDE=new Map();
 let P=null,RES=null,BUSY=false,LC=null,LP=[],TUN={};
@@ -267,6 +267,30 @@ function listenTake(guide,vb,off){stopL();const c=lc(),b=c.createBufferSource();
 
 /* ---- vocal studio chain + final mix ---- */
 function ir(oc,sec){const n=Math.floor(oc.sampleRate*sec),b=oc.createBuffer(2,n,oc.sampleRate);for(let c=0;c<2;c++){const d=b.getChannelData(c);let lp=0;for(let i=0;i<n;i++){lp+=((Math.random()*2-1)-lp)*(.5-.42*i/n);d[i]=lp*1.9*Math.pow(1-i/n,2.8)}}return b}
+/* ---- de-esser: tames harsh s / sh / ch sounds in each vocal take (set DEESS=false to turn off) ---- */
+const DEESS=true,DSC=new WeakMap();
+/* De-esser: listens to the 5.5 kHz+ band; when it dominates the sound (s, sh, ch, t) it turns the highs down by up to about 8 dB, smoothly. */
+function deEss(x,sr){
+ const n=x.length,out=new Float32Array(n);
+ const w0=2*Math.PI*5500/sr,cs=Math.cos(w0),al=Math.sin(w0)/(2*.7071),a0=1+al,
+  b0=(1+cs)/2/a0,b1=-(1+cs)/a0,b2=b0,a1=-2*cs/a0,a2=(1-al)/a0,
+  lpA=1-Math.exp(-2*Math.PI*6500/sr);
+ let x1=0,x2=0,y1=0,y2=0,u1=0,u2=0,v1=0,v2=0,lp=0;
+ const k=ms=>Math.exp(-1/(sr*ms/1000)),eA=k(1),eR=k(30),gA=k(1.5),gR=k(45),TH=.28,MIN=.4;
+ let eh=0,ex=0,g=1;
+ for(let i=0;i<n;i++){
+  const s=x[i];
+  const t=b0*s+b1*x1+b2*x2-a1*y1-a2*y2;x2=x1;x1=s;y2=y1;y1=t;
+  const h=b0*t+b1*u1+b2*u2-a1*v1-a2*v2;u2=u1;u1=t;v2=v1;v1=h;           // detector band (not heard)
+  const ah=h<0?-h:h,as=s<0?-s:s;
+  eh=ah>eh?ah+(eh-ah)*eA:ah+(eh-ah)*eR;ex=as>ex?as+(ex-as)*eA:as+(ex-as)*eR;
+  const r=ex>.004?eh/ex:0,tg=r>TH?Math.max(MIN,TH/r):1;
+  g=tg<g?tg+(g-tg)*gA:tg+(g-tg)*gR;
+  lp+=lpA*(s-lp);out[i]=lp+g*(s-lp)}                                  // smooth high-shelf cut
+ return out}
+function DE(b){if(!DEESS||!b)return b;let r=DSC.get(b);if(r)return r;
+ try{r=new OfflineAudioContext(b.numberOfChannels,b.length,b.sampleRate).createBuffer(b.numberOfChannels,b.length,b.sampleRate);for(let c=0;c<b.numberOfChannels;c++)r.copyToChannel(deEss(b.getChannelData(c),b.sampleRate),c)}catch(e){return b}
+ DSC.set(b,r);return r}
 function vchain(oc,M,p){const fx=FX[p.fx]||FX['Clean Studio'],inp=oc.createGain(),bq=(type,f,gain,q)=>{const x=oc.createBiquadFilter();x.type=type;x.frequency.value=f;if(gain!=null)x.gain.value=gain;if(q)x.Q.value=q;return x};
  const hp=bq('highpass',95),e1=bq('peaking',300,-2,1),e2=bq('peaking',3000,fx.pres,.9),e3=bq('highshelf',10000,fx.air),e4=bq('lowshelf',200,fx.warm);
  const cm=oc.createDynamicsCompressor();cm.threshold.value=-26;cm.ratio.value=4;cm.knee.value=10;cm.attack.value=.006;cm.release.value=.18;
@@ -278,10 +302,10 @@ function vchain(oc,M,p){const fx=FX[p.fx]||FX['Clean Studio'],inp=oc.createGain(
 async function mixProject(p,onProg){await ensureBeat(p);const bar=240/p.beat.bpm,total=p.sections.reduce((a,s)=>a+s.bars*bar,0),tail=2.5;
  const oc=new OfflineAudioContext(2,Math.ceil((total+tail)*SR),SR),M=mst(oc,total+tail),bb=oc.createGain();bb.gain.value=p.vol.beat/100*gf(p,'beat');bb.connect(M);
  sched(oc,bb,p,0,total+tail);const V=vchain(oc,M,p);let pos=0;const LG=oc.createGain();LG.gain.value=gf(p,'voc');LG.connect(V.inp);const BK=(p.vol.bk??60)/100*gf(p,'bk');
- p.sections.forEach(sec=>{const s0=pos;pos+=sec.bars*bar;const tk=tkOf(sec),buf=tk&&VB(tk.id);if(!buf)return;
+ p.sections.forEach(sec=>{const s0=pos;pos+=sec.bars*bar;const tk=tkOf(sec),buf=tk&&DE(VB(tk.id));if(!buf)return;
   const off=Math.min(tk.lead+(p.sync||0)/1000,buf.duration-.05),dur=Math.max(.1,Math.min(sec.bars*bar+1.2,buf.duration-off));
   const s=oc.createBufferSource();s.buffer=buf;s.connect(LG);s.start(s0,off,dur);
-  if(V.fx.dbl)[-1,1].forEach(d=>{const s2=oc.createBufferSource();s2.buffer=buf;s2.detune.value=d*7;const pn=oc.createStereoPanner();pn.pan.value=d*.7;const gd=oc.createGain();gd.gain.value=V.fx.dbl*(sec.type==='chorus'?1:.4)*.6;s2.connect(gd);gd.connect(pn);pn.connect(LG);s2.start(s0+.02,off,dur)});(sec.bk||[]).forEach((L2,k)=>{const b2=VB(L2.id);if(!b2)return;const o2=Math.min(L2.lead+(p.sync||0)/1000,b2.duration-.05),d2=Math.max(.1,Math.min(sec.bars*bar+1.2,b2.duration-o2)),s3=oc.createBufferSource();s3.buffer=b2;const g3=oc.createGain();g3.gain.value=BK;const pn3=oc.createStereoPanner();pn3.pan.value=[-.6,.6,0][k%3];s3.connect(g3);g3.connect(pn3);pn3.connect(V.inp);s3.start(s0,o2,d2)});});
+  if(V.fx.dbl)[-1,1].forEach(d=>{const s2=oc.createBufferSource();s2.buffer=buf;s2.detune.value=d*7;const pn=oc.createStereoPanner();pn.pan.value=d*.7;const gd=oc.createGain();gd.gain.value=V.fx.dbl*(sec.type==='chorus'?1:.4)*.6;s2.connect(gd);gd.connect(pn);pn.connect(LG);s2.start(s0+.02,off,dur)});(sec.bk||[]).forEach((L2,k)=>{const b2=DE(VB(L2.id));if(!b2)return;const o2=Math.min(L2.lead+(p.sync||0)/1000,b2.duration-.05),d2=Math.max(.1,Math.min(sec.bars*bar+1.2,b2.duration-o2)),s3=oc.createBufferSource();s3.buffer=b2;const g3=oc.createGain();g3.gain.value=BK;const pn3=oc.createStereoPanner();pn3.pan.value=[-.6,.6,0][k%3];s3.connect(g3);g3.connect(pn3);pn3.connect(V.inp);s3.start(s0,o2,d2)});});
  if(onProg&&oc.suspend){const T=total+tail,st=Math.max(2,T/25);for(let t=st;t<T-.5;t+=st){const q=Math.floor(t*SR/128)*128/SR;try{oc.suspend(q).then(()=>{onProg(q/T);oc.resume()}).catch(()=>{})}catch(e){}}}
  return oc.startRendering()}
 function wav(buf){const ch=buf.numberOfChannels,n=buf.length,sr=buf.sampleRate,ab=new ArrayBuffer(44+n*ch*2),v=new DataView(ab),w=(o,s)=>[...s].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));
@@ -322,28 +346,49 @@ async function mp3Async(buf,onProg,lite){const ch=lite?1:Math.min(2,buf.numberOf
  const f=enc.flush();if(f.length)out.push(new Uint8Array(f));return new Blob(out,{type:'audio/mpeg'})}
 
 /* ---- recording ---- */
+/* ---- vocal recorder: raw uncompressed audio (no Opus / no lossy step). Falls back to the old recorder only if the phone cannot do this. ---- */
+function pcmWav(a,sr){const n=a.length,ab=new ArrayBuffer(44+n*2),v=new DataView(ab),w=(o,t)=>[...t].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));
+ w(0,'RIFF');v.setUint32(4,36+n*2,true);w(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,n*2,true);
+ for(let i=0;i<n;i++){const x=Math.max(-1,Math.min(1,a[i]));v.setInt16(44+i*2,x<0?x*32768:x*32767,true)}return new Blob([ab],{type:'audio/wav'})}
+async function mkRec(st,ctx){
+ let node=null,ch=[],on=false,startT=null,t0=0;const sr=ctx.sampleRate,src=ctx.createMediaStreamSource(st);
+ try{if(!ctx.audioWorklet||!window.AudioWorkletNode)throw 0;
+  if(!ctx.__lbRaw){const code="class P extends AudioWorkletProcessor{constructor(){super();this.s=1e9;this.f=1;this.port.onmessage=e=>{this.s=e.data.s;this.f=1}}process(i){const c=i[0]&&i[0][0];if(c&&currentTime>=this.s){if(this.f){this.f=0;this.port.postMessage({t:currentTime,d:c.slice(0)})}else this.port.postMessage({d:c.slice(0)})}return true}}registerProcessor('lbraw',P)";
+   await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([code],{type:'application/javascript'})));ctx.__lbRaw=1}
+  node=new AudioWorkletNode(ctx,'lbraw',{numberOfInputs:1,numberOfOutputs:1,channelCount:1,channelCountMode:'explicit'});
+  node.port.onmessage=e=>{if(!on)return;const m=e.data;if(m.t!=null&&startT==null)startT=m.t;ch.push(m.d)}}catch(e){node=null}
+ if(!node&&ctx.createScriptProcessor){node=ctx.createScriptProcessor(4096,1,1);node.onaudioprocess=e=>{if(!on||ctx.currentTime<t0)return;if(startT==null)startT=ctx.currentTime-4096/sr;ch.push(new Float32Array(e.inputBuffer.getChannelData(0)))}}
+ if(node){const sil=ctx.createGain();sil.gain.value=0;src.connect(node);node.connect(sil);sil.connect(ctx.destination);
+  return{lat:(ctx.outputLatency||0)+(ctx.baseLatency||0),
+   begin(t){t0=t;ch=[];startT=null;on=true;if(node.port)node.port.postMessage({s:t})},
+   async stop(){on=false;if(node.port)node.port.postMessage({s:1e9});let n=0;ch.forEach(x=>n+=x.length);if(!n||startT==null)return{blob:null};const a=new Float32Array(n);let o=0;ch.forEach(x=>{a.set(x,o);o+=x.length});ch=[];return{blob:pcmWav(a,sr),startT}},
+   close(){try{src.disconnect()}catch(e){}try{node.disconnect()}catch(e){}}}}
+ if(!window.MediaRecorder)throw new Error('norec');
+ let mr,c=[];return{lat:0,begin(){startT=ctx.currentTime;c=[];mr=new MediaRecorder(st,{audioBitsPerSecond:256000});mr.ondataavailable=e=>e.data.size&&c.push(e.data);mr.start()},
+  stop(){return new Promise(r=>{mr.onstop=()=>r({blob:new Blob(c,{type:mr.mimeType||'audio/webm'}),startT});if(mr.state!=='inactive')mr.stop()})},close(){}}}
 let RC=null;
 async function record(i,opt={}){const sec=P.sections[i],bpb=240/P.beat.bpm,win=opt.win,lay=opt.layer;
- if(!navigator.mediaDevices||!window.MediaRecorder)return toast('Recording is not supported in this browser');
- let st;try{st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}})}catch(e){return toast('Please allow the microphone to record')}
+ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)return toast('Recording is not supported in this browser');
+ let st;try{st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,channelCount:1}})}catch(e){return toast('Please allow the microphone to record')}
  try{au.pause()}catch(e){}stopL();
  const o=$('#recov'),big=$('#rBig'),bar=$('#rBar i'),btn=$('#rBtns');o.classList.add('on');$('#rTitle').textContent=secName(i)+' · '+(win?'bars '+(win[0]+1)+'–'+win[1]:lay?'backing vocal':sec.bars+' bars');
  $('#rLy').textContent=sec.lyrics||'(No lyrics written — just sing!)';btn.innerHTML='';big.textContent='…';
  let cancel=false;const xh=()=>{cancel=true;RC&&RC.stop();stopL()};$('#rX').onclick=xh;
- const end=()=>{o.classList.remove('on');st.getTracks().forEach(t=>t.stop());stopL();renderLab()};
+ let RW=null;const end=()=>{o.classList.remove('on');try{RW&&RW.close()}catch(e){}st.getTracks().forEach(t=>t.stop());stopL();renderLab()};
  let guide;try{guide=win?await renderWin(P,secStart(P,i)+win[0]*bpb,secStart(P,i)+win[1]*bpb):await guideBuf(i)}catch(e){end();return toast('Could not prepare the beat')}
  if(cancel){end();return}
  const ctx=lc();let mv=null,moff=0;if(lay){const tk0=tkOf(sec);if(tk0){try{mv=await takeBuf(tk0.id);moff=tk0.lead+(P.sync||0)/1000}catch(e){}}}
  const attempt=async()=>{for(let n=3;n>0&&!cancel;n--){big.textContent=n;await sleep(800)}
   if(cancel)return null;big.textContent='🎙';btn.innerHTML='<button class="lbtn rec" id="rStop">⏹ Stop</button>';
-  const mr=new MediaRecorder(st,{audioBitsPerSecond:192000}),ch=[];mr.ondataavailable=e=>e.data.size&&ch.push(e.data);const fin=new Promise(r=>mr.onstop=r);
-  const t0=performance.now();mr.start();await sleep(150);
-  const bs=ctx.createBufferSource();bs.buffer=guide;bs.connect(ctx.destination);const lead=(performance.now()-t0)/1000,ts=ctx.currentTime;bs.start();let x2=null;if(mv){x2=ctx.createBufferSource();x2.buffer=mv;const g2=ctx.createGain();g2.gain.value=1.1;x2.connect(g2);g2.connect(ctx.destination);x2.start(0,Math.min(moff,mv.duration-.01))}
-  let over=false;const stop=()=>{if(over)return;over=true;try{bs.stop()}catch(e){}try{x2&&x2.stop()}catch(e){}setTimeout(()=>{if(mr.state!=='inactive')mr.stop()},500)};
+  if(!RW){try{RW=await mkRec(st,lc())}catch(e){big.textContent='⚠️';toast('Recording is not supported in this browser');return null}}
+  const t0=ctx.currentTime+.12,bt=t0+.15;RW.begin(t0);
+  const bs=ctx.createBufferSource();bs.buffer=guide;bs.connect(ctx.destination);bs.start(bt);let x2=null;if(mv){x2=ctx.createBufferSource();x2.buffer=mv;const g2=ctx.createGain();g2.gain.value=1.1;x2.connect(g2);g2.connect(ctx.destination);x2.start(bt,Math.min(moff,mv.duration-.01))}
+  let over=false,fin;const done=new Promise(r=>fin=r);const stop=()=>{if(over)return;over=true;try{bs.stop()}catch(e){}try{x2&&x2.stop()}catch(e){}setTimeout(()=>RW.stop().then(fin),500)};
   bs.onended=stop;$('#rStop').onclick=stop;RC={stop};
-  const tick=()=>{if(over)return;bar.style.width=Math.min(100,(ctx.currentTime-ts)/guide.duration*100)+'%';requestAnimationFrame(tick)};tick();
-  await fin;RC=null;bar.style.width='0';
-  const blob=new Blob(ch,{type:mr.mimeType||'audio/webm'});let vb;try{vb=await dec(await blob.arrayBuffer())}catch(e){toast('Could not read the recording');return null}
+  const tick=()=>{if(over)return;bar.style.width=Math.max(0,Math.min(100,(ctx.currentTime-bt)/guide.duration*100))+'%';requestAnimationFrame(tick)};tick();
+  const rr=await done;RC=null;bar.style.width='0';
+  if(!rr.blob){toast('Nothing was recorded — try again');return null}
+  const blob=rr.blob,lead=Math.max(0,bt-rr.startT)+RW.lat;let vb;try{vb=await dec(await blob.arrayBuffer())}catch(e){toast('Could not read the recording');return null}
   return{blob,vb,lead}};
  btn.innerHTML='<button class="lbtn" id="rH">▶ Hear beat</button><button class="lbtn" id="rHs">■ Stop</button><button class="lbtn rec" id="rG">● Start</button>';big.textContent='🎧';
  const go=await new Promise(res=>{$('#rH').onclick=()=>{try{(lay&&mv)?listenTake(guide,mv,moff):playBuf(guide)}catch(e){}};$('#rHs').onclick=()=>stopL();$('#rG').onclick=()=>{stopL();res(true)};$('#rX').onclick=()=>{stopL();res(false)}});
@@ -512,7 +557,7 @@ async function tuneBuf(buf,key,mode,amt,onProg){
  const nb=new OfflineAudioContext(2,n,sr).createBuffer(2,n,sr);nb.copyToChannel(out,0);nb.copyToChannel(out,1);onProg&&onProg(1);return nb}
 
 /* ---- mastering: tone shaping + glue compressor + limiter on the finished mix ---- */
-const MAS={clean:{lo:1.5,hi:2,th:-20,ra:3,mk:1,lim:-1.5},warm:{lo:3.5,hi:-1,th:-20,ra:3,mk:1,lim:-1.5},loud:{lo:2,hi:3,th:-28,ra:6,mk:1.6,lim:-1}};
+const MAS={clean:{lo:1.5,hi:1,th:-20,ra:3,mk:1,lim:-1.5},warm:{lo:3.5,hi:-1,th:-20,ra:3,mk:1,lim:-1.5},loud:{lo:2,hi:1.5,th:-28,ra:6,mk:1.6,lim:-1}};
 async function masterBuf(buf,mode,onProg){const M=MAS[mode];if(!M)return buf;
  const oc=new OfflineAudioContext(2,buf.length,buf.sampleRate),src=oc.createBufferSource();src.buffer=buf;
  const bq=(t,f,g)=>{const q=oc.createBiquadFilter();q.type=t;q.frequency.value=f;if(g!=null)q.gain.value=g;return q};
