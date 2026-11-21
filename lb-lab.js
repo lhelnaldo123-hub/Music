@@ -8,6 +8,8 @@ if(window.__lbLab)return;window.__lbLab=1;
 const $=s=>document.querySelector(s),
 E=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])),
 AC=window.AudioContext||window.webkitAudioContext,SR=44100,
+/* Lite mode (old phones like itel): on by default for phones with 2 GB RAM or less until the user picks. */
+isLite=()=>{const v=LS('lite',null);return v===null?(navigator.deviceMemory!=null&&navigator.deviceMemory<=2):!!v},
 sleep=ms=>new Promise(r=>setTimeout(r,ms)),
 fm=t=>{t=Math.round(t||0);return Math.floor(t/60)+':'+String(t%60).padStart(2,'0')},
 kvPut=(id,blob)=>tx('kv','readwrite',k=>k.put({id,blob})),
@@ -254,13 +256,13 @@ function sched(oc,dest0,p,t0,t1){let dest=dest0;
    if(f.snare&&b===sec.bars-1&&sec.type!=='outro')for(let i=12;i<16;i++)snare(T0+i*st,.3+(i-12)*.2)}})}
 function mst(oc,fadeEnd){const c=oc.createDynamicsCompressor();c.threshold.value=-14;c.knee.value=12;c.ratio.value=3;c.attack.value=.01;c.release.value=.2;
  const m=oc.createGain();m.gain.value=.9;if(fadeEnd){m.gain.setValueAtTime(.9,Math.max(0,fadeEnd-4));m.gain.linearRampToValueAtTime(0,fadeEnd-.1)}c.connect(m);m.connect(oc.destination);return c}
-const renderWin=(p,t0,t1)=>{const oc=new OfflineAudioContext(2,Math.max(1,Math.ceil((t1-t0)*SR)),SR);sched(oc,mst(oc),p,t0,t1);return oc.startRendering()};
+const renderWin=(p,t0,t1)=>{const lt=isLite(),rs=lt?32000:SR,oc=new OfflineAudioContext(lt?1:2,Math.max(1,Math.ceil((t1-t0)*rs)),rs);sched(oc,mst(oc),p,t0,t1);return oc.startRendering()};
 async function loadExt(B,must){if(EXT[B.id])return;let blob;try{
  if(B.from==='lib'){const r=await tx('blobs','readonly',b=>b.get(B.sid));blob=r&&r.blob}else{const r=await kvGet('beat_'+B.id);blob=r&&r.blob}
  if(!blob)throw new Error('beat missing');EXT[B.id]=await dec(await blob.arrayBuffer())}catch(e){if(must)throw e}}
 async function ensureBeat(p){const B=p.beat;if(B.kind==='ext')await loadExt(B,true);for(const sc of p.sections)if(sc.x)await loadExt(sc.x,false)}
 async function takeBuf(id){if(TB[id])return TB[id];const r=await kvGet('take_'+id);if(!r)return null;return TB[id]=await dec(await r.blob.arrayBuffer())}
-async function guideBuf(i){await ensureBeat(P);const sec=P.sections[i],s0=secStart(P,i),k=JSON.stringify([P.beat,P.bg,sec.type,sec.bars,P.beat.kind==='ext'?s0:0,sec.mix||'full',P.beat.kind==='ext'?beatOffs(P)[i]:0,sec.x||0,sec.at||0,P.vol.beat]);
+async function guideBuf(i){await ensureBeat(P);const sec=P.sections[i],s0=secStart(P,i),k=JSON.stringify([P.beat,P.bg,sec.type,sec.bars,P.beat.kind==='ext'?s0:0,sec.mix||'full',P.beat.kind==='ext'?beatOffs(P)[i]:0,sec.x||0,sec.at||0,P.vol.beat,isLite()]);
  if(GUIDE.has(k))return GUIDE.get(k);const b=await renderWin(P,s0,s0+sec.bars*240/P.beat.bpm);if(GUIDE.size>8)GUIDE.clear();GUIDE.set(k,b);return b}
 function playBuf(buf){stopL();const c=lc(),s=c.createBufferSource();s.buffer=buf;s.connect(c.destination);s.start();LP=[s];s.onended=()=>{if(LP[0]===s){LP=[];mpHide()}};mpShow(1,'🎧 Beat preview')}
 function listenTake(guide,vb,off){stopL();const c=lc(),b=c.createBufferSource();b.buffer=guide;b.connect(c.destination);const v=c.createBufferSource();v.buffer=vb;const g=c.createGain();g.gain.value=1.3;v.connect(g);g.connect(c.destination);const t=c.currentTime+.1;b.start(t);v.start(t,Math.min(off,vb.duration-.01));LP=[b,v];let n=2;[b,v].forEach(x=>x.onended=()=>{if(LP.includes(x)&&--n<=0){LP=[];mpHide()}});mpShow(1,'🎧 Part preview')}
@@ -296,17 +298,17 @@ function vchain(oc,M,p){const fx=FX[p.fx]||FX['Clean Studio'],inp=oc.createGain(
  const cm=oc.createDynamicsCompressor();cm.threshold.value=-26;cm.ratio.value=4;cm.knee.value=10;cm.attack.value=.006;cm.release.value=.18;
  const out=oc.createGain();out.gain.value=p.vol.voc/100*1.2;
  inp.connect(hp);hp.connect(e1);e1.connect(e2);e2.connect(e3);e3.connect(e4);e4.connect(cm);cm.connect(out);out.connect(M);
- if(fx.rev){const cv=oc.createConvolver();cv.buffer=ir(oc,1.9);const rw=oc.createGain();rw.gain.value=fx.rev;out.connect(cv);cv.connect(rw);rw.connect(M)}
+ if(fx.rev){const cv=oc.createConvolver();cv.buffer=ir(oc,isLite()?1.1:1.9);const rw=oc.createGain();rw.gain.value=fx.rev;out.connect(cv);cv.connect(rw);rw.connect(M)}
  if(fx.echo){const dl=oc.createDelay(2);dl.delayTime.value=60/p.beat.bpm*.75;const fb=oc.createGain();fb.gain.value=.32;const lp=bq('lowpass',3200),ew=oc.createGain();ew.gain.value=fx.echo;out.connect(dl);dl.connect(lp);lp.connect(fb);fb.connect(dl);lp.connect(ew);ew.connect(M)}
  return{inp,fx}}
 async function mixProject(p,onProg){await ensureBeat(p);const bar=240/p.beat.bpm,total=p.sections.reduce((a,s)=>a+s.bars*bar,0),tail=2.5;
- const oc=new OfflineAudioContext(2,Math.ceil((total+tail)*SR),SR),M=mst(oc,total+tail),bb=oc.createGain();bb.gain.value=p.vol.beat/100*gf(p,'beat');bb.connect(M);
+ const lite=isLite(),RS=lite?32000:SR,oc=new OfflineAudioContext(lite?1:2,Math.ceil((total+tail)*RS),RS),M=mst(oc,total+tail),bb=oc.createGain();bb.gain.value=p.vol.beat/100*gf(p,'beat');bb.connect(M);
  sched(oc,bb,p,0,total+tail);const V=vchain(oc,M,p);let pos=0;const LG=oc.createGain();LG.gain.value=gf(p,'voc');LG.connect(V.inp);const BK=(p.vol.bk??60)/100*gf(p,'bk');
  p.sections.forEach(sec=>{const s0=pos;pos+=sec.bars*bar;const tk=tkOf(sec),buf=tk&&DE(VB(tk.id));if(!buf)return;
   const off=Math.min(tk.lead+(p.sync||0)/1000,buf.duration-.05),dur=Math.max(.1,Math.min(sec.bars*bar+1.2,buf.duration-off));
   const s=oc.createBufferSource();s.buffer=buf;s.connect(LG);s.start(s0,off,dur);
-  if(V.fx.dbl)[-1,1].forEach(d=>{const s2=oc.createBufferSource();s2.buffer=buf;s2.detune.value=d*7;const pn=oc.createStereoPanner();pn.pan.value=d*.7;const gd=oc.createGain();gd.gain.value=V.fx.dbl*(sec.type==='chorus'?1:.4)*.6;s2.connect(gd);gd.connect(pn);pn.connect(LG);s2.start(s0+.02,off,dur)});(sec.bk||[]).forEach((L2,k)=>{const b2=DE(VB(L2.id));if(!b2)return;const o2=Math.min(L2.lead+(p.sync||0)/1000,b2.duration-.05),d2=Math.max(.1,Math.min(sec.bars*bar+1.2,b2.duration-o2)),s3=oc.createBufferSource();s3.buffer=b2;const g3=oc.createGain();g3.gain.value=BK;const pn3=oc.createStereoPanner();pn3.pan.value=[-.6,.6,0][k%3];s3.connect(g3);g3.connect(pn3);pn3.connect(V.inp);s3.start(s0,o2,d2)});});
- if(onProg&&oc.suspend){const T=total+tail,st=Math.max(2,T/25);for(let t=st;t<T-.5;t+=st){const q=Math.floor(t*SR/128)*128/SR;try{oc.suspend(q).then(()=>{onProg(q/T);oc.resume()}).catch(()=>{})}catch(e){}}}
+  if(V.fx.dbl&&!lite)[-1,1].forEach(d=>{const s2=oc.createBufferSource();s2.buffer=buf;s2.detune.value=d*7;const pn=oc.createStereoPanner();pn.pan.value=d*.7;const gd=oc.createGain();gd.gain.value=V.fx.dbl*(sec.type==='chorus'?1:.4)*.6;s2.connect(gd);gd.connect(pn);pn.connect(LG);s2.start(s0+.02,off,dur)});(sec.bk||[]).forEach((L2,k)=>{const b2=DE(VB(L2.id));if(!b2)return;const o2=Math.min(L2.lead+(p.sync||0)/1000,b2.duration-.05),d2=Math.max(.1,Math.min(sec.bars*bar+1.2,b2.duration-o2)),s3=oc.createBufferSource();s3.buffer=b2;const g3=oc.createGain();g3.gain.value=BK;const pn3=oc.createStereoPanner();pn3.pan.value=[-.6,.6,0][k%3];s3.connect(g3);g3.connect(pn3);pn3.connect(V.inp);s3.start(s0,o2,d2)});});
+ if(onProg&&oc.suspend){const T=total+tail,st=Math.max(2,T/(lite?8:25));for(let t=st;t<T-.5;t+=st){const q=Math.floor(t*RS/128)*128/RS;try{oc.suspend(q).then(()=>{onProg(q/T);oc.resume()}).catch(()=>{})}catch(e){}}}
  return oc.startRendering()}
 function wav(buf){const ch=buf.numberOfChannels,n=buf.length,sr=buf.sampleRate,ab=new ArrayBuffer(44+n*ch*2),v=new DataView(ab),w=(o,s)=>[...s].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));
  w(0,'RIFF');v.setUint32(4,36+n*ch*2,true);w(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,ch,true);v.setUint32(24,sr,true);v.setUint32(28,sr*ch*2,true);v.setUint16(32,ch*2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,n*ch*2,true);
@@ -315,8 +317,8 @@ function wav(buf){const ch=buf.numberOfChannels,n=buf.length,sr=buf.sampleRate,a
 /* Smooth saver: writes the WAV in small chunks (UI never freezes), normalises loudness, shows % progress */
 async function wavAsync(buf,onProg){const ch=buf.numberOfChannels,n=buf.length,sr=buf.sampleRate,d=[];for(let c=0;c<ch;c++)d.push(buf.getChannelData(c));
  const CH=48000;let pk=0;
- for(let i=0;i<n;i+=CH){const e=Math.min(n,i+CH);for(let c=0;c<ch;c++){const a=d[c];for(let j=i;j<e;j++){const x=a[j]<0?-a[j]:a[j];if(x>pk)pk=x}}if(((i/CH)&15)===0)await new Promise(r=>setTimeout(r,0))}
- const g=pk>0.0001?Math.min(3,0.97/pk):1,h=new DataView(new ArrayBuffer(44)),w=(o,t)=>[...t].forEach((c,i)=>h.setUint8(o+i,c.charCodeAt(0)));
+ if(!buf.__m)for(let i=0;i<n;i+=CH){const e=Math.min(n,i+CH);for(let c=0;c<ch;c++){const a=d[c];for(let j=i;j<e;j++){const x=a[j]<0?-a[j]:a[j];if(x>pk)pk=x}}if(((i/CH)&15)===0)await new Promise(r=>setTimeout(r,0))}
+ const g=buf.__m?1:pk>0.0001?Math.min(3,0.97/pk):1,h=new DataView(new ArrayBuffer(44)),w=(o,t)=>[...t].forEach((c,i)=>h.setUint8(o+i,c.charCodeAt(0)));
  w(0,'RIFF');h.setUint32(4,36+n*ch*2,true);w(8,'WAVEfmt ');h.setUint32(16,16,true);h.setUint16(20,1,true);h.setUint16(22,ch,true);h.setUint32(24,sr,true);h.setUint32(28,sr*ch*2,true);h.setUint16(32,ch*2,true);h.setUint16(34,16,true);w(36,'data');h.setUint32(40,n*ch*2,true);
  const parts=[h.buffer];
  for(let i=0;i<n;i+=CH){const e=Math.min(n,i+CH),o=new Int16Array((e-i)*ch);let k=0;
@@ -484,7 +486,7 @@ function renderLab(){if(BUSY)return;fixP(P);const r=$('#lab');
   <p class="mut">If your voice sounds late against the beat, raise Mic sync (Bluetooth needs more).</p></div>
  <div class="lc"><b>🎤 Voice tuning (auto-tune)</b><p class="mut" style="margin:6px 0">Pulls your voice into the song's key (${KEYS[B.key||0]} ${B.mode==='M'?'major':'minor'} — change it above). Robotic is the famous auto-tune sound.</p><div class="chips" style="margin:10px 0 0">${[[0,'Off'],[.5,'Light'],[.8,'Medium'],[1,'Robotic']].map(([v,l])=>`<button class="chip${(P.tune||0)===v?' on':''}" data-a="tune" data-v="${v}">${l}</button>`).join('')}</div></div>
   <div class="lc"><b>✨ Mastering</b><p class="mut" style="margin:6px 0">Makes the finished song louder, clearer and ready to share.</p><div class="chips" style="margin:10px 0 0">${[['off','Off'],['clean','Clean'],['warm','Warm'],['loud','Loud']].map(([v,l])=>`<button class="chip${(P.master||'off')===v?' on':''}" data-a="mas" data-v="${v}">${l}</button>`).join('')}</div></div>
-  <label class="mut" style="display:flex;gap:8px;align-items:center;margin:10px 2px"><input type="checkbox" data-lite ${LS('lite',false)?'checked':''}> Lite mode – smaller file, faster save (for old phones)</label>
+  <label class="mut" style="display:flex;gap:8px;align-items:center;margin:10px 2px"><input type="checkbox" data-lite ${isLite()?'checked':''}> ⚡ Lite mode – much faster song making + smaller file (for old phones). Mastering uses a quick version.</label>
  <button class="lbtn pr" data-a="create" style="width:100%;padding:16px;font-size:16px">🎶 Create my song</button>
  ${RES?`<div class="lc"><b>🎉 Your song is ready</b><div class="mut" id="mp3st" style="margin-top:6px">${RES.st||''}</div>${RES.cmp?`<div class="lrow"><button class="lbtn" data-a="cmpA">▶ Before mastering (20s)</button><button class="lbtn" data-a="cmpB">▶ After mastering (20s)</button></div>`:''}<audio controls src="${RES.url}" style="width:100%;margin-top:10px"></audio><div class="lrow"><button class="lbtn pr" data-a="resAdd">➕ Add to my music</button><button class="lbtn" data-a="resDl">⬇ Download</button><button class="lbtn" data-a="resSh">📤 Share</button></div></div>`:''}`}
 function setField(t){const f=t.dataset.f,i=+t.dataset.i,v=t.value;if(!P)return;
@@ -538,15 +540,17 @@ async function tuneBuf(buf,key,mode,amt,onProg){
  for(let i=0;i<n;i++)x[i]=(c0[i]+c1[i])*.5;
  const m=n>>1,d=new Float32Array(m);for(let i=0;i<m;i++)d[i]=(x[2*i]+x[2*i+1])*.5;
  const dsr=sr/2,H=512,Wn=512,lo=Math.floor(dsr/500),hi=Math.ceil(dsr/80),hops=Math.max(1,Math.floor((m-Wn-hi)/H)),ratio=new Float32Array(hops).fill(1),
-  pcs=SCALE[mode==='M'?'M':'m'].map(v=>(v+key)%12),spd=amt>=1?1:amt>=.8?.5:.25;let rs=1;
- for(let h=0;h<hops;h++){const st=h*H;let e0=0;for(let i=0;i<Wn;i++)e0+=d[st+i]*d[st+i];let tg=1;
+  pcs=SCALE[mode==='M'?'M':'m'].map(v=>(v+key)%12),spd=amt>=1?1:amt>=.8?.5:.25,lt=isLite(),ls=lt?4:2,hs=lt?2:1;let rs=1,ltg=1;
+ for(let h=0;h<hops;h++){const st=h*H;let tg=1;
+  if(h%hs!==0)tg=ltg;else{let e0=0;for(let i=0;i<Wn;i++)e0+=d[st+i]*d[st+i];
   if(e0/Wn>1e-4){const nsdf=lag=>{let r=0,e1=0;for(let i=0;i<Wn;i++){const b=d[st+i+lag];r+=d[st+i]*b;e1+=b*b}return 2*r/(e0+e1+1e-9)};
-   let best=-1;const cv=[];for(let lag=lo;lag<=hi;lag+=2){const v=nsdf(lag);cv.push(v);if(v>best)best=v}
-   let bl=lo;for(let k=0;k<cv.length;k++){const pv=k>0?cv[k-1]:-1,nx=k<cv.length-1?cv[k+1]:-1;if(cv[k]>=best*.9&&cv[k]>=pv&&cv[k]>=nx){bl=lo+2*k;break}}
+   let best=-1;const cv=[];for(let lag=lo;lag<=hi;lag+=ls){const v=nsdf(lag);cv.push(v);if(v>best)best=v}
+   let bl=lo;for(let k=0;k<cv.length;k++){const pv=k>0?cv[k-1]:-1,nx=k<cv.length-1?cv[k+1]:-1;if(cv[k]>=best*.9&&cv[k]>=pv&&cv[k]>=nx){bl=lo+ls*k;break}}
    let b2=-1,l2=bl;for(let lag=Math.max(lo,bl-2);lag<=Math.min(hi,bl+2);lag++){const v=nsdf(lag);if(v>b2){b2=v;l2=lag}}
    if(b2>.6){const a=nsdf(Math.max(lo,l2-1)),c=nsdf(Math.min(hi,l2+1)),dn=a-2*b2+c,lg=l2+(dn?.5*(a-c)/dn:0),f0=dsr/lg,midi=69+12*Math.log2(f0/440);
     let note=Math.round(midi),bd=99;for(let k=-2;k<=2;k++){const q=Math.round(midi)+k;if(pcs.includes(((q%12)+12)%12)&&Math.abs(q-midi)<bd){bd=Math.abs(q-midi);note=q}}
     if(Math.abs(note-midi)>.1)tg=Math.pow(2,(note-midi)*amt/12)}}
+  ltg=tg}
   rs+=(tg-rs)*spd;ratio[h]=rs;if((h&63)===63){onProg&&onProg(h/hops*.5);await sleep(0)}}
  const W=1024,half=W>>1,out=new Float32Array(n),HS=H*2;let d1=0,d2=half;
  const rd=p=>{const i=Math.floor(p),f=p-i;return(i>=0&&i+1<n?x[i]*(1-f)+x[i+1]*f:0)};
@@ -557,17 +561,52 @@ async function tuneBuf(buf,key,mode,amt,onProg){
  const nb=new OfflineAudioContext(2,n,sr).createBuffer(2,n,sr);nb.copyToChannel(out,0);nb.copyToChannel(out,1);onProg&&onProg(1);return nb}
 
 /* ---- mastering: tone shaping + glue compressor + limiter on the finished mix ---- */
-const MAS={clean:{lo:1.5,hi:1,th:-20,ra:3,mk:1,lim:-1.5},warm:{lo:3.5,hi:-1,th:-20,ra:3,mk:1,lim:-1.5},loud:{lo:2,hi:1.5,th:-28,ra:6,mk:1.6,lim:-1}};
-async function masterBuf(buf,mode,onProg){const M=MAS[mode];if(!M)return buf;
- const oc=new OfflineAudioContext(2,buf.length,buf.sampleRate),src=oc.createBufferSource();src.buffer=buf;
- const bq=(t,f,g)=>{const q=oc.createBiquadFilter();q.type=t;q.frequency.value=f;if(g!=null)q.gain.value=g;return q};
- const c=oc.createDynamicsCompressor();c.threshold.value=M.th;c.knee.value=8;c.ratio.value=M.ra;c.attack.value=.012;c.release.value=.16;
- const mk=oc.createGain();mk.gain.value=M.mk;
- const L=oc.createDynamicsCompressor();L.threshold.value=M.lim;L.knee.value=0;L.ratio.value=20;L.attack.value=.002;L.release.value=.08;
- const a=bq('highpass',28),b=bq('lowshelf',120,M.lo),e=bq('highshelf',8000,M.hi);
- src.connect(a);a.connect(b);b.connect(e);e.connect(c);c.connect(mk);mk.connect(L);L.connect(oc.destination);src.start();
+const MAS={
+ clean:{lo:1,mud:-1.5,pres:.8,hi:1,th:-22,ra:2.2,lufs:-15,drive:0},
+ warm:{lo:3,mud:-1,pres:0,hi:-1.5,th:-22,ra:2.5,lufs:-14,drive:.15},
+ loud:{lo:2,mud:-1.5,pres:1.5,hi:1.5,th:-26,ra:3.5,lufs:-10.5,drive:.35}};
+const CEIL=.891; /* -1 dB peak ceiling: safe for MP3 and phone speakers */
+/* loudness (approx. LUFS: K-weighting, 400 ms blocks, silence gated) */
+const bqc=(t,f,sr,g,Q)=>{const w=2*Math.PI*f/sr,cs=Math.cos(w),sn=Math.sin(w);let b0,b1,b2,a0,a1,a2;
+ if(t==='hs'){const A=Math.pow(10,g/40),al=sn/2*Math.SQRT2,q=2*Math.sqrt(A)*al;b0=A*((A+1)+(A-1)*cs+q);b1=-2*A*((A-1)+(A+1)*cs);b2=A*((A+1)+(A-1)*cs-q);a0=(A+1)-(A-1)*cs+q;a1=2*((A-1)-(A+1)*cs);a2=(A+1)-(A-1)*cs-q}
+ else{const al=sn/(2*Q);b0=(1+cs)/2;b1=-(1+cs);b2=b0;a0=1+al;a1=-2*cs;a2=1-al}
+ return[b0/a0,b1/a0,b2/a0,a1/a0,a2/a0]};
+async function loudOf(chs,sr,onProg){
+ const n=chs[0].length,S=Math.round(.1*sr),nb=Math.floor(n/S),e=new Float64Array(nb),f1=bqc('hs',1500,sr,4),f2=bqc('hp',38,sr,0,.5);
+ for(const x of chs){let a1=0,a2=0,b1=0,b2=0,c1=0,c2=0,d1=0,d2=0;
+  for(let k=0;k<nb;k++){let sum=0;for(let i=k*S,E=i+S;i<E;i++){const v=x[i],y=f1[0]*v+a1;a1=f1[1]*v-f1[3]*y+a2;a2=f1[2]*v-f1[4]*y;const z=f2[0]*y+b1;b1=f2[1]*y-f2[3]*z+b2;b2=f2[2]*y-f2[4]*z;sum+=z*z}e[k]+=sum/S;
+   if((k&15)===15){onProg&&onProg(k/nb);await sleep(0)}}}
+ const bl=[];for(let k=0;k+3<nb;k++){const m=(e[k]+e[k+1]+e[k+2]+e[k+3])/4;if(m>0&&-.691+10*Math.log10(m)>-70)bl.push(m)}
+ if(!bl.length)return null;
+ let mu=bl.reduce((a,b)=>a+b,0)/bl.length;const g=bl.filter(m=>-.691+10*Math.log10(m)>-.691+10*Math.log10(mu)-10);
+ if(!g.length)return null;mu=g.reduce((a,b)=>a+b,0)/g.length;return -.691+10*Math.log10(mu)}
+/* lookahead peak limiter: never lets a peak pass the ceiling, and never clicks */
+async function limitBuf(chs,sr,C,onProg){
+ const n=chs[0].length,L=Math.max(8,Math.round(.005*sr)),need=new Float32Array(n);
+ for(let i=0;i<n;i++){let m=0;for(let c=0;c<chs.length;c++){const v=chs[c][i],a=v<0?-v:v;if(a>m)m=a}need[i]=m>C?C/m:1;if((i&262143)===262143){onProg&&onProg(i/n*.3);await sleep(0)}}
+ const cap=L+2,dv=new Float32Array(cap),di=new Int32Array(cap);let h=0,t=0,cnt=0;
+ const push=j=>{const v=need[j];while(cnt>0&&dv[(t-1+cap)%cap]>=v){t=(t-1+cap)%cap;cnt--}dv[t]=v;di[t]=j;t=(t+1)%cap;cnt++};
+ for(let j=0;j<Math.min(n,L-1);j++)push(j);
+ for(let i=0;i<n;i++){const j=i+L-1;if(j<n)push(j);while(cnt>0&&di[h]<i){h=(h+1)%cap;cnt--}need[i]=cnt?dv[h]:1;if((i&262143)===262143){onProg&&onProg(.3+i/n*.3);await sleep(0)}}
+ let sum=0,rel=1;const rc=1-Math.exp(-1/(sr*.08));
+ for(let i=0;i<n;i++){sum+=need[i];if(i>=L)sum-=need[i-L];const gs=sum/(i<L?i+1:L);rel=Math.min(gs,rel+(1-rel)*rc);for(let c=0;c<chs.length;c++)chs[c][i]*=rel;if((i&262143)===262143){onProg&&onProg(.6+i/n*.4);await sleep(0)}}}
+async function eqComp(buf,M,onProg){
+ const oc=new OfflineAudioContext(buf.numberOfChannels,buf.length,buf.sampleRate),src=oc.createBufferSource();src.buffer=buf;
+ const bq=(t,f,g,q)=>{const x=oc.createBiquadFilter();x.type=t;x.frequency.value=f;if(g!=null)x.gain.value=g;if(q)x.Q.value=q;return x};
+ const a=bq('highpass',30),b=bq('lowshelf',120,M.lo),m=bq('peaking',280,M.mud,1),p=bq('peaking',3500,M.pres,.8),e=bq('highshelf',9000,M.hi);
+ const c=oc.createDynamicsCompressor();c.threshold.value=M.th;c.knee.value=6;c.ratio.value=M.ra;c.attack.value=.03;c.release.value=.25;
+ src.connect(a);a.connect(b);b.connect(m);m.connect(p);p.connect(e);e.connect(c);c.connect(oc.destination);src.start();
  if(onProg&&oc.suspend){const T=buf.length/buf.sampleRate,st=Math.max(2,T/10);for(let t=st;t<T-.5;t+=st){const q=Math.floor(t*buf.sampleRate/128)*128/buf.sampleRate;try{oc.suspend(q).then(()=>{onProg(q/T);oc.resume()}).catch(()=>{})}catch(x){}}}
  return oc.startRendering()}
+/* Mastering: tone + glue compression (skipped on Lite phones), then loudness match + safe limiter (always, it is fast) */
+async function masterBuf(buf,mode,onProg){const M=MAS[mode];if(!M)return buf;const P_=f=>onProg&&onProg(f);
+ let b=buf;if(!isLite())b=await eqComp(buf,M,f=>P_(f*.5));
+ const chs=[];for(let c=0;c<b.numberOfChannels;c++)chs.push(b.getChannelData(c));const sr=b.sampleRate;
+ const L=await loudOf(chs,sr,f=>P_(.5+f*.2));
+ if(L!=null){const gain=Math.pow(10,Math.max(-12,Math.min(12,M.lufs-L))/20),d=M.drive;
+  for(const x of chs)for(let i=0;i<x.length;i++){let v=x[i]*gain;if(d)v=(1-d)*v+d*Math.tanh(v*1.5)/1.5;x[i]=v}}
+ await limitBuf(chs,sr,CEIL,f=>P_(.7+f*.3));
+ b.__m=1;return b}
 function cmpSlice(buf){const len=Math.min(buf.length,20*buf.sampleRate),st=Math.max(0,Math.floor((buf.length-len)/2)),o=lc().createBuffer(2,len,buf.sampleRate);let pk=0;
  for(let c=0;c<2;c++){const a=buf.getChannelData(Math.min(c,buf.numberOfChannels-1)).slice(st,st+len);for(let i=0;i<len;i++){const v=a[i]<0?-a[i]:a[i];if(v>pk)pk=v}o.copyToChannel(a,c)}
  const g=pk>.0001?.9/pk:1;for(let c=0;c<2;c++){const a=o.getChannelData(c);for(let i=0;i<len;i++)a[i]*=g}return o}
@@ -592,10 +631,10 @@ let last=-1;for(let i=0;i<n;i+=B){const e=Math.min(n,i+B),m=ch===2?enc.encodeBuf
 const f=enc.flush();if(f.length)out.push(new Uint8Array(f));self.postMessage({done:1,blob:new Blob(out,{type:'audio/mpeg'})})}catch(x){self.postMessage({err:1})}}`;
 function bgMp3(buf,me,base){
  if(!window.Worker||!window.Blob)return;
- try{const lite=LS('lite',false),ch=lite?1:Math.min(2,buf.numberOfChannels),n=buf.length,d=[];
+ try{const lite=isLite(),ch=lite?1:Math.min(2,buf.numberOfChannels),n=buf.length,d=[];
   if(lite&&buf.numberOfChannels>1){const L=buf.getChannelData(0),R=buf.getChannelData(1),m=new Float32Array(n);for(let i=0;i<n;i++)m[i]=(L[i]+R[i])/2;d.push(m)}
   else for(let c=0;c<ch;c++)d.push(new Float32Array(buf.getChannelData(c)));
-  let pk=0;for(const a of d)for(let i=0;i<n;i++){const x=a[i]<0?-a[i]:a[i];if(x>pk)pk=x}
+  let pk=0;if(!buf.__m)for(const a of d)for(let i=0;i<n;i++){const x=a[i]<0?-a[i]:a[i];if(x>pk)pk=x}
   const w=new Worker(URL.createObjectURL(new Blob([WK],{type:'text/javascript'})));
   const upd=t=>{me.st=t;const e=$('#mp3st');if(e&&RES===me)e.textContent=t};
   upd('Making a smaller MP3 file… 0%  (you can already play it or add it to your music)');
@@ -605,7 +644,7 @@ function bgMp3(buf,me,base){
     const a=$('#lab audio');if(!BUSY&&(!a||a.paused))renderLab()}
    else if(m.err){w.terminate();upd('')}};
   w.onerror=()=>{w.terminate();upd('')};
-  w.postMessage({src:new URL('lame.min.js',location.href).href,ch,sr:buf.sampleRate,kb:lite?96:192,g:pk>.0001?Math.min(3,.97/pk):1,d},d.map(a=>a.buffer))
+  w.postMessage({src:new URL('lame.min.js',location.href).href,ch,sr:buf.sampleRate,kb:lite?96:192,g:buf.__m?1:pk>.0001?Math.min(3,.97/pk):1,d},d.map(a=>a.buffer))
  }catch(e){console.error(e)}}
 async function create(){fixP(P);if(!P.sections.some(s=>tkOf(s)))return toast('Record at least one part first 🎤');
  stopL();BUSY=true;$('#busy').classList.add('on');const msg=$('#bMsg'),bar=$('#bBar');
@@ -619,7 +658,7 @@ async function create(){fixP(P);if(!P.sections.some(s=>tkOf(s)))return toast('Re
   if(tu){let k=0;for(const id of all){if(TB[id])TUN[id]=await tuneBuf(TB[id],P.beat.key||0,P.beat.mode||'m',P.tune,f=>set('Tuning your voice',a0+(a1-a0)*((k+f)/all.length)));k++}}
   set('Mixing your song',a1);await sleep(30);
   let buf=await mixProject(P,f=>set('Mixing your song',a1+(mixEnd-a1)*f)),cmp=null;TUN={};
-  if(ma){set('Mastering',mixEnd);await sleep(20);const dry=buf;buf=await masterBuf(buf,P.master,f=>set('Mastering',mixEnd+.1*f));cmp={a:cmpSlice(dry),b:cmpSlice(buf)}}
+  if(ma){set('Mastering',mixEnd);await sleep(20);const ca=cmpSlice(buf);buf=await masterBuf(buf,P.master,f=>set('Mastering',mixEnd+.1*f));cmp={a:ca,b:cmpSlice(buf)}}
   set('Saving',saveSt);await sleep(20);
   const wb=await wavAsync(buf,f=>set('Saving',saveSt+(1-saveSt)*f));
   if(RES)URL.revokeObjectURL(RES.url);
