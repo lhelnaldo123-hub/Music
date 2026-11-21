@@ -219,7 +219,7 @@ const secStart=(p,i)=>p.sections.slice(0,i).reduce((a,s)=>a+s.bars*240/p.beat.bp
 /* ---- beat engine (WebAudio synth, rendered offline) ---- */
 const beatOffs=p=>{const B=p.beat,bar=240/B.bpm;let off=0,pos=0;return p.sections.map(s=>{const s0=pos;pos+=s.bars*bar;if(s.rs)off=-s0;if(s.at>=1)off=(s.at-1)*bar-s0;off+=(s.bp||0)*60/B.bpm;return off})};
 function sched(oc,dest0,p,t0,t1){let dest=dest0;
- const B=p.beat,bar=240/B.bpm,st=bar/16,gen=B.kind==='gen',y=gen?(B.tmp||styleOf(B.style)):{},bg=p.bg||{};
+ const B=p.beat,bar=240/B.bpm,st=bar/16,gen=B.kind==='gen',y=gen?(B.tmp||styleOf(B.style)):{},bg=gen?(p.bg||{}):{};   /* an uploaded beat plays as it is: no phone-made pad, keys, shaker or vinyl on top */
  const N=oc.createBuffer(1,oc.sampleRate*2,oc.sampleRate),nd=N.getChannelData(0);for(let i=0;i<nd.length;i++)nd[i]=Math.random()*2-1;
  const g=(v,t)=>{const x=oc.createGain();x.gain.setValueAtTime(v,t);x.connect(dest);return x};
  const tone=(t,type,f,d,v,att=.005)=>{const o=oc.createOscillator();o.type=type;o.frequency.value=f;const x=oc.createGain();x.gain.setValueAtTime(.0001,t);x.gain.linearRampToValueAtTime(v,t+att);x.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(x);x.connect(dest);o.start(t);o.stop(t+d+.05)};
@@ -479,7 +479,7 @@ function renderLab(){if(BUSY)return;fixP(P);const r=$('#lab');
  <div class="lc"><b>➕ Add a part</b><div class="lrow">${['intro','verse','chorus','bridge','outro'].map(t=>`<button class="lbtn" data-a="add" data-v="${t}">${t[0].toUpperCase()+t.slice(1)}</button>`).join('')}</div>
   <div class="ok" style="margin-top:10px">Song length: <b>${fm(tot)}</b>${tot<TG?' · under '+Math.round(TG/60)+' min':''}</div>
   <div class="lrow"><span class="mut">Target length</span>${sel('target',[[120,'2 min'],[180,'3 min'],[240,'4 min'],[300,'5 min'],[360,'6 min'],[480,'8 min'],[600,'10 min']],TG)}${tot<TG?'<button class="lbtn" data-a="long">⏱ Make it '+Math.round(TG/60)+'+ min</button>':''}</div></div>
- <div class="lc"><b>🎚 Background music</b><div class="chips" style="margin:10px 0 0">${bgs.map(([k,l])=>`<button class="chip${P.bg[k]?' on':''}" data-a="bg" data-v="${k}">${l}</button>`).join('')}</div></div>
+ ${gen?`<div class="lc"><b>🎚 Background music</b><div class="chips" style="margin:10px 0 0">${bgs.map(([k,l])=>`<button class="chip${P.bg[k]?' on':''}" data-a="bg" data-v="${k}">${l}</button>`).join('')}</div></div>`:`<div class="lc"><b>🎚 Background music</b><p class="mut" style="margin:6px 0">You are using your own beat, so it plays exactly as it is. The app adds nothing on top of it.</p></div>`}
  <div class="lc"><b>🎤 Studio voice effect</b><div class="chips" style="margin:10px 0 0">${Object.keys(FX).map(k=>`<button class="chip${P.fx===k?' on':''}" data-a="fx" data-v="${k}">${k}</button>`).join('')}</div>
   <b style="display:block;margin-top:14px">⚙ Mix</b><div class="chips" style="margin:8px 0 0"><button class="chip${P.auto!==false?' on':''}" data-a="auto" data-v="1">✨ Auto (recommended)</button><button class="chip${P.auto===false?' on':''}" data-a="auto" data-v="0">🎚 Custom</button></div>
   ${P.auto===false?mixRows():'<p class="mut">Auto levels your voice and sets the beat, lead and backing volumes so it sounds like a normal song. Pick Custom to set them yourself.</p>'}
