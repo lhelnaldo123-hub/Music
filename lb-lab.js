@@ -488,7 +488,7 @@ function renderLab(){if(BUSY)return;fixP(P);const r=$('#lab');
   <div class="lc"><b>✨ Mastering</b><p class="mut" style="margin:6px 0">Makes the finished song louder, clearer and ready to share.</p><div class="chips" style="margin:10px 0 0">${[['off','Off'],['clean','Clean'],['warm','Warm'],['loud','Loud']].map(([v,l])=>`<button class="chip${(P.master||'off')===v?' on':''}" data-a="mas" data-v="${v}">${l}</button>`).join('')}</div></div>
   <label class="mut" style="display:flex;gap:8px;align-items:center;margin:10px 2px"><input type="checkbox" data-lite ${isLite()?'checked':''}> ⚡ Lite mode – much faster song making + smaller file (for old phones). Mastering uses a quick version.</label>
  <button class="lbtn pr" data-a="create" style="width:100%;padding:16px;font-size:16px">🎶 Create my song</button>
- ${RES?`<div class="lc"><b>🎉 Your song is ready</b><div class="mut" id="mp3st" style="margin-top:6px">${RES.st||''}</div>${RES.cmp?`<div class="lrow"><button class="lbtn" data-a="cmpA">▶ Before mastering (20s)</button><button class="lbtn" data-a="cmpB">▶ After mastering (20s)</button></div>`:''}<audio controls src="${RES.url}" style="width:100%;margin-top:10px"></audio><div class="lrow"><button class="lbtn pr" data-a="resAdd">➕ Add to my music</button><button class="lbtn" data-a="resDl">⬇ Download</button><button class="lbtn" data-a="resSh">📤 Share</button></div></div>`:''}`}
+ ${RES?`<div class="lc"><b>🎉 Your song is ready</b><div class="mut" id="mp3st" style="margin-top:6px">${RES.st||''}</div>${RES.cmp?`<div class="lrow"><button class="lbtn" data-a="cmpA">▶ Before mastering (20s)</button><button class="lbtn" data-a="cmpB">▶ After mastering (20s)</button></div>`:''}<audio controls src="${RES.url}" style="width:100%;margin-top:10px"></audio><div class="lrow"><button class="lbtn pr" data-a="resAdd">➕ Add to my music</button><button class="lbtn" data-a="resDl">⬇ Download</button><button class="lbtn" data-a="resSh">📤 Share</button></div><div class="lrow"><button class="lbtn" data-a="resX">✖ Close</button><button class="lbtn" data-a="new">🆕 New song</button></div></div>`:''}`}
 function setField(t){const f=t.dataset.f,i=+t.dataset.i,v=t.value;if(!P)return;
  if(f==='name')P.name=v;else if(f==='artist')P.artist=v;else if(f==='bpm')P.beat.bpm=Math.max(50,Math.min(200,+v||90));
  else if(f==='key')P.beat.key=+v;else if(f==='mode')P.beat.mode=v;else if(f==='bars')P.sections[i].bars=+v;else if(f==='lyr')P.sections[i].lyrics=v;else if(f==='mix')P.sections[i].mix=v;
@@ -497,10 +497,11 @@ function setField(t){const f=t.dataset.f,i=+t.dataset.i,v=t.value;if(!P)return;
  save();if(['vb','vv','vk','sy','xvol'].includes(f)){const b=t.parentElement.querySelector('b');if(b)b.textContent=v+(f==='sy'?'ms':'%')}
  if(f==='bpm'||f==='bars'||f==='target'||f==='at'||f==='xat')renderLab()}
 async function act(a,i,v){i=+i;
- if(a==='new'){P=newProject();RES=null;save();renderLab()}
+ if(a==='new'){stopL();if(RES){try{URL.revokeObjectURL(RES.url)}catch(e){}}P=newProject();RES=null;save();renderLab();window.scrollTo(0,0)}
+ else if(a==='resX'){stopL();if(RES){try{URL.revokeObjectURL(RES.url)}catch(e){}}RES=null;renderLab()}
  else if(a==='open'){P=LS('labp',[])[i];RES=null;renderLab()}
  else if(a==='delp'){if(!confirm('Delete this song project and its recordings?'))return;const l=LS('labp',[]),p=l[i];for(const s of p.sections){if(s.take)await kvDel('take_'+s.take.id);for(const b of s.bk||[])await kvDel('take_'+b.id)}l.splice(i,1);SV('labp',l);renderLab()}
- else if(a==='home'){stopL();P=null;renderLab()}
+ else if(a==='home'){stopL();if(RES){try{URL.revokeObjectURL(RES.url)}catch(e){}}RES=null;P=null;renderLab()}
  else if(a==='beat')beatSheet();else if(a==='maker')makerSheet();
  else if(a==='add'){P.sections.push(newSec(v));save();renderLab()}
  else if(a==='up'&&i>0){[P.sections[i-1],P.sections[i]]=[P.sections[i],P.sections[i-1]];save();renderLab()}
