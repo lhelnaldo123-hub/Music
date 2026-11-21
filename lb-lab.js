@@ -254,9 +254,10 @@ function sched(oc,dest0,p,t0,t1){let dest=dest0;
     if(f.keys&&i%2===0)tone(t,'triangle',mtof(cn[(i>>1)%3]+12),.4,.09);
     if(f.shaker)nz(t,.05,'highpass',9000,i%4===2?.07:.04)}
    if(f.snare&&b===sec.bars-1&&sec.type!=='outro')for(let i=12;i<16;i++)snare(T0+i*st,.3+(i-12)*.2)}})}
-function mst(oc,fadeEnd){const c=oc.createDynamicsCompressor();c.threshold.value=-14;c.knee.value=12;c.ratio.value=3;c.attack.value=.01;c.release.value=.2;
+function mst(oc,fadeEnd,soft){/* soft = uploaded beat: no compressor at all, the beat stays exactly as it was made */const c=soft?oc.createGain():oc.createDynamicsCompressor();if(!soft){c.threshold.value=-14;c.knee.value=12;c.ratio.value=3;c.attack.value=.01;c.release.value=.2}
  const m=oc.createGain();m.gain.value=.9;if(fadeEnd){m.gain.setValueAtTime(.9,Math.max(0,fadeEnd-4));m.gain.linearRampToValueAtTime(0,fadeEnd-.1)}c.connect(m);m.connect(oc.destination);return c}
-const renderWin=(p,t0,t1)=>{const lt=isLite(),rs=lt?32000:SR,oc=new OfflineAudioContext(lt?1:2,Math.max(1,Math.ceil((t1-t0)*rs)),rs);sched(oc,mst(oc),p,t0,t1);return oc.startRendering()};
+/* An uploaded beat is already a finished, mastered track: keep it full quality (stereo, 44.1 kHz), no hiss filters, only a light glue compressor. */
+const renderWin=(p,t0,t1)=>{const ext=p.beat&&p.beat.kind==='ext',lt=isLite()&&!ext,rs=lt?32000:SR,oc=new OfflineAudioContext(lt?1:2,Math.max(1,Math.ceil((t1-t0)*rs)),rs);if(ext)oc.createGain();sched(oc,mst(oc,0,ext),p,t0,t1);return oc.startRendering()};
 async function loadExt(B,must){if(EXT[B.id])return;let blob;try{
  if(B.from==='lib'){const r=await tx('blobs','readonly',b=>b.get(B.sid));blob=r&&r.blob}else{const r=await kvGet('beat_'+B.id);blob=r&&r.blob}
  if(!blob)throw new Error('beat missing');EXT[B.id]=await dec(await blob.arrayBuffer())}catch(e){if(must)throw e}}
@@ -302,7 +303,7 @@ function vchain(oc,M,p){const fx=FX[p.fx]||FX['Clean Studio'],inp=oc.createGain(
  if(fx.echo){const dl=oc.createDelay(2);dl.delayTime.value=60/p.beat.bpm*.75;const fb=oc.createGain();fb.gain.value=.32;const lp=bq('lowpass',3200),ew=oc.createGain();ew.gain.value=fx.echo;out.connect(dl);dl.connect(lp);lp.connect(fb);fb.connect(dl);lp.connect(ew);ew.connect(M)}
  return{inp,fx}}
 async function mixProject(p,onProg){await ensureBeat(p);const bar=240/p.beat.bpm,total=p.sections.reduce((a,s)=>a+s.bars*bar,0),tail=2.5;
- const lite=isLite(),RS=lite?32000:SR,oc=new OfflineAudioContext(lite?1:2,Math.ceil((total+tail)*RS),RS),M=mst(oc,total+tail),bb=oc.createGain();bb.gain.value=p.vol.beat/100*gf(p,'beat');bb.connect(M);
+ const ext=p.beat.kind==='ext',lite=isLite()&&!ext,RS=lite?32000:SR,oc=new OfflineAudioContext(lite?1:2,Math.ceil((total+tail)*RS),RS),M=(ext&&oc.createGain(),mst(oc,total+tail,ext)),bb=oc.createGain();bb.gain.value=p.vol.beat/100*gf(p,'beat');bb.connect(M);
  sched(oc,bb,p,0,total+tail);const V=vchain(oc,M,p);let pos=0;const LG=oc.createGain();LG.gain.value=gf(p,'voc');LG.connect(V.inp);const BK=(p.vol.bk??60)/100*gf(p,'bk');
  p.sections.forEach(sec=>{const s0=pos;pos+=sec.bars*bar;const tk=tkOf(sec),buf=tk&&DE(VB(tk.id));if(!buf)return;
   const off=Math.min(tk.lead+(p.sync||0)/1000,buf.duration-.05),dur=Math.max(.1,Math.min(sec.bars*bar+1.2,buf.duration-off));
@@ -644,9 +645,8 @@ let last=-1;for(let i=0;i<n;i+=B){const e=Math.min(n,i+B),m=ch===2?enc.encodeBuf
 const f=enc.flush();if(f.length)out.push(new Uint8Array(f));self.postMessage({done:1,blob:new Blob(out,{type:'audio/mpeg'})})}catch(x){self.postMessage({err:1})}}`;
 function bgMp3(buf,me,base){
  if(!window.Worker||!window.Blob)return;
- try{const lite=isLite(),ch=lite?1:Math.min(2,buf.numberOfChannels),n=buf.length,d=[];
-  if(lite&&buf.numberOfChannels>1){const L=buf.getChannelData(0),R=buf.getChannelData(1),m=new Float32Array(n);for(let i=0;i<n;i++)m[i]=(L[i]+R[i])/2;d.push(m)}
-  else for(let c=0;c<ch;c++)d.push(new Float32Array(buf.getChannelData(c)));
+ try{const lite=isLite(),ch=Math.min(2,buf.numberOfChannels),n=buf.length,d=[];
+  for(let c=0;c<ch;c++)d.push(new Float32Array(buf.getChannelData(c)));
   let pk=0;if(!buf.__m)for(const a of d)for(let i=0;i<n;i++){const x=a[i]<0?-a[i]:a[i];if(x>pk)pk=x}
   const w=new Worker(URL.createObjectURL(new Blob([WK],{type:'text/javascript'})));
   const upd=t=>{me.st=t;const e=$('#mp3st');if(e&&RES===me)e.textContent=t};
@@ -657,7 +657,7 @@ function bgMp3(buf,me,base){
     const a=$('#lab audio');if(!BUSY&&(!a||a.paused))renderLab()}
    else if(m.err){w.terminate();upd('')}};
   w.onerror=()=>{w.terminate();upd('')};
-  w.postMessage({src:new URL('lame.min.js',location.href).href,ch,sr:buf.sampleRate,kb:lite?96:192,g:buf.__m?1:pk>.0001?Math.min(3,.97/pk):1,d},d.map(a=>a.buffer))
+  w.postMessage({src:new URL('lame.min.js',location.href).href,ch,sr:buf.sampleRate,kb:lite?(ch===2?128:96):192,g:buf.__m?1:pk>.0001?Math.min(3,.97/pk):1,d},d.map(a=>a.buffer))
  }catch(e){console.error(e)}}
 
 /* ---- voice pitch: deeper bass voice or higher girl / chipmunk voice, same speed, still YOUR voice ---- */
