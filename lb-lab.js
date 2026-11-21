@@ -306,8 +306,8 @@ async function mixProject(p,onProg){await ensureBeat(p);const bar=240/p.beat.bpm
  sched(oc,bb,p,0,total+tail);const V=vchain(oc,M,p);let pos=0;const LG=oc.createGain();LG.gain.value=gf(p,'voc');LG.connect(V.inp);const BK=(p.vol.bk??60)/100*gf(p,'bk');
  p.sections.forEach(sec=>{const s0=pos;pos+=sec.bars*bar;const tk=tkOf(sec),buf=tk&&DE(VB(tk.id));if(!buf)return;
   const off=Math.min(tk.lead+(p.sync||0)/1000,buf.duration-.05),dur=Math.max(.1,Math.min(sec.bars*bar+1.2,buf.duration-off));
-  const s=oc.createBufferSource();s.buffer=buf;s.connect(LG);s.start(s0,off,dur);
-  if(V.fx.dbl&&!lite)[-1,1].forEach(d=>{const s2=oc.createBufferSource();s2.buffer=buf;s2.detune.value=d*7;const pn=oc.createStereoPanner();pn.pan.value=d*.7;const gd=oc.createGain();gd.gain.value=V.fx.dbl*(sec.type==='chorus'?1:.4)*.6;s2.connect(gd);gd.connect(pn);pn.connect(LG);s2.start(s0+.02,off,dur)});(sec.bk||[]).forEach((L2,k)=>{const b2=DE(VB(L2.id));if(!b2)return;const o2=Math.min(L2.lead+(p.sync||0)/1000,b2.duration-.05),d2=Math.max(.1,Math.min(sec.bars*bar+1.2,b2.duration-o2)),s3=oc.createBufferSource();s3.buffer=b2;const g3=oc.createGain();g3.gain.value=BK;const pn3=oc.createStereoPanner();pn3.pan.value=[-.6,.6,0][k%3];s3.connect(g3);g3.connect(pn3);pn3.connect(V.inp);s3.start(s0,o2,d2)});});
+  const s=oc.createBufferSource();s.buffer=buf;const tgv=id=>(p.tg&&p.tg[id])||1,tn=oc.createGain();tn.gain.value=tgv(tk.id);s.connect(tn);tn.connect(LG);s.start(s0,off,dur);
+  if(V.fx.dbl&&!lite)[-1,1].forEach(d=>{const s2=oc.createBufferSource();s2.buffer=buf;s2.detune.value=d*7;const pn=oc.createStereoPanner();pn.pan.value=d*.7;const gd=oc.createGain();gd.gain.value=V.fx.dbl*(sec.type==='chorus'?1:.4)*.6*tgv(tk.id);s2.connect(gd);gd.connect(pn);pn.connect(LG);s2.start(s0+.02,off,dur)});(sec.bk||[]).forEach((L2,k)=>{const b2=DE(VB(L2.id));if(!b2)return;const o2=Math.min(L2.lead+(p.sync||0)/1000,b2.duration-.05),d2=Math.max(.1,Math.min(sec.bars*bar+1.2,b2.duration-o2)),s3=oc.createBufferSource();s3.buffer=b2;const g3=oc.createGain();g3.gain.value=BK*tgv(L2.id);const pn3=oc.createStereoPanner();pn3.pan.value=[-.6,.6,0][k%3];s3.connect(g3);g3.connect(pn3);pn3.connect(V.inp);s3.start(s0,o2,d2)});});
  if(onProg&&oc.suspend){const T=total+tail,st=Math.max(2,T/(lite?8:25));for(let t=st;t<T-.5;t+=st){const q=Math.floor(t*RS/128)*128/RS;try{oc.suspend(q).then(()=>{onProg(q/T);oc.resume()}).catch(()=>{})}catch(e){}}}
  return oc.startRendering()}
 function wav(buf){const ch=buf.numberOfChannels,n=buf.length,sr=buf.sampleRate,ab=new ArrayBuffer(44+n*ch*2),v=new DataView(ab),w=(o,s)=>[...s].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));
@@ -481,20 +481,23 @@ function renderLab(){if(BUSY)return;fixP(P);const r=$('#lab');
   <div class="lrow"><span class="mut">Target length</span>${sel('target',[[120,'2 min'],[180,'3 min'],[240,'4 min'],[300,'5 min'],[360,'6 min'],[480,'8 min'],[600,'10 min']],TG)}${tot<TG?'<button class="lbtn" data-a="long">⏱ Make it '+Math.round(TG/60)+'+ min</button>':''}</div></div>
  <div class="lc"><b>🎚 Background music</b><div class="chips" style="margin:10px 0 0">${bgs.map(([k,l])=>`<button class="chip${P.bg[k]?' on':''}" data-a="bg" data-v="${k}">${l}</button>`).join('')}</div></div>
  <div class="lc"><b>🎤 Studio voice effect</b><div class="chips" style="margin:10px 0 0">${Object.keys(FX).map(k=>`<button class="chip${P.fx===k?' on':''}" data-a="fx" data-v="${k}">${k}</button>`).join('')}</div>
-  ${mixRows()}
+  <b style="display:block;margin-top:14px">⚙ Mix</b><div class="chips" style="margin:8px 0 0"><button class="chip${P.auto!==false?' on':''}" data-a="auto" data-v="1">✨ Auto (recommended)</button><button class="chip${P.auto===false?' on':''}" data-a="auto" data-v="0">🎚 Custom</button></div>
+  ${P.auto===false?mixRows():'<p class="mut">Auto levels your voice and sets the beat, lead and backing volumes so it sounds like a normal song. Pick Custom to set them yourself.</p>'}
   <div class="fx"><span>Mic sync</span><input type="range" data-f="sy" min="0" max="400" step="10" value="${P.sync}"><b>${P.sync}ms</b></div>
   <p class="mut">If your voice sounds late against the beat, raise Mic sync (Bluetooth needs more).</p></div>
+ <div class="lc"><b>🎭 Voice pitch</b><p class="mut" style="margin:6px 0">Still your voice, just deeper (bass) or higher (girl, chipmunk). Pick one, or pull the slider.</p><div class="chips" style="margin:8px 0">${[[-6,'Deep bass'],[-3,'Deeper'],[0,'Normal'],[3,'Higher'],[5,'Girl'],[8,'Chipmunk']].map(([v,l])=>`<button class="chip${(P.vp||0)===v?' on':''}" data-a="vp" data-v="${v}">${l}</button>`).join('')}</div><div style="display:flex;align-items:center;gap:8px"><input type="range" data-f="vp" min="-12" max="12" step="1" value="${P.vp||0}" style="flex:1;min-width:0"><b style="width:56px;text-align:right;font-size:12px">${(P.vp||0)>0?'+':''}${P.vp||0} st</b></div><button class="lbtn" data-a="vpPrev" style="margin-top:10px">▶ Hear my voice (8s)</button></div>
  <div class="lc"><b>🎤 Voice tuning (auto-tune)</b><p class="mut" style="margin:6px 0">Pulls your voice into the song's key (${KEYS[B.key||0]} ${B.mode==='M'?'major':'minor'} — change it above). Robotic is the famous auto-tune sound.</p><div class="chips" style="margin:10px 0 0">${[[0,'Off'],[.5,'Light'],[.8,'Medium'],[1,'Robotic']].map(([v,l])=>`<button class="chip${(P.tune||0)===v?' on':''}" data-a="tune" data-v="${v}">${l}</button>`).join('')}</div></div>
   <div class="lc"><b>✨ Mastering</b><p class="mut" style="margin:6px 0">Makes the finished song louder, clearer and ready to share.</p><div class="chips" style="margin:10px 0 0">${[['off','Off'],['clean','Clean'],['warm','Warm'],['loud','Loud']].map(([v,l])=>`<button class="chip${(P.master||'off')===v?' on':''}" data-a="mas" data-v="${v}">${l}</button>`).join('')}</div></div>
   <label class="mut" style="display:flex;gap:8px;align-items:center;margin:10px 2px"><input type="checkbox" data-lite ${isLite()?'checked':''}> ⚡ Lite mode – much faster song making + smaller file (for old phones). Mastering uses a quick version.</label>
+ <button class="lbtn" data-a="prev" style="width:100%;padding:14px;margin-bottom:10px">▶ Preview with my settings (short)</button>
  <button class="lbtn pr" data-a="create" style="width:100%;padding:16px;font-size:16px">🎶 Create my song</button>
  ${RES?`<div class="lc"><b>🎉 Your song is ready</b><div class="mut" id="mp3st" style="margin-top:6px">${RES.st||''}</div>${RES.cmp?`<div class="lrow"><button class="lbtn" data-a="cmpA">▶ Before mastering (20s)</button><button class="lbtn" data-a="cmpB">▶ After mastering (20s)</button></div>`:''}<audio controls src="${RES.url}" style="width:100%;margin-top:10px"></audio><div class="lrow"><button class="lbtn pr" data-a="resAdd">➕ Add to my music</button><button class="lbtn" data-a="resDl">⬇ Download</button><button class="lbtn" data-a="resSh">📤 Share</button></div><div class="lrow"><button class="lbtn" data-a="resX">✖ Close</button><button class="lbtn" data-a="new">🆕 New song</button></div></div>`:''}`}
 function setField(t){const f=t.dataset.f,i=+t.dataset.i,v=t.value;if(!P)return;
  if(f==='name')P.name=v;else if(f==='artist')P.artist=v;else if(f==='bpm')P.beat.bpm=Math.max(50,Math.min(200,+v||90));
  else if(f==='key')P.beat.key=+v;else if(f==='mode')P.beat.mode=v;else if(f==='bars')P.sections[i].bars=+v;else if(f==='lyr')P.sections[i].lyrics=v;else if(f==='mix')P.sections[i].mix=v;
- else if(f==='target'){P.target=+v;autoLen(P)}else if(f==='vb')P.vol.beat=+v;else if(f==='vv')P.vol.voc=+v;else if(f==='vk')P.vol.bk=+v;else if(f==='sy')P.sync=+v;
+ else if(f==='target'){P.target=+v;autoLen(P)}else if(f==='vb')P.vol.beat=+v;else if(f==='vv')P.vol.voc=+v;else if(f==='vk')P.vol.bk=+v;else if(f==='sy')P.sync=+v;else if(f==='vp')P.vp=+v;
   else if(f==='at'){const n=Math.floor(+v);P.sections[i].at=n>=1?n:null}else if(f==='xat'){const x=P.sections[i].x;if(x)x.at=Math.max(1,Math.floor(+v)||1)}else if(f==='xvol'){const x=P.sections[i].x;if(x)x.vol=+v}else return;
- save();if(['vb','vv','vk','sy','xvol'].includes(f)){const b=t.parentElement.querySelector('b');if(b)b.textContent=v+(f==='sy'?'ms':'%')}
+ save();if(['vb','vv','vk','sy','xvol','vp'].includes(f)){const b=t.parentElement.querySelector('b');if(b)b.textContent=f==='vp'?((+v>0?'+':'')+v+' st'):v+(f==='sy'?'ms':'%')}
  if(f==='bpm'||f==='bars'||f==='target'||f==='at'||f==='xat')renderLab()}
 async function act(a,i,v){i=+i;
  if(a==='new'){stopL();if(RES){try{URL.revokeObjectURL(RES.url)}catch(e){}}P=newProject();RES=null;save();renderLab();window.scrollTo(0,0)}
@@ -515,6 +518,15 @@ async function act(a,i,v){i=+i;
  else if(a==='mute'){P.mute[v]=!P.mute[v];save();renderLab()}
  else if(a==='solo'){P.solo=P.solo===v?null:v;save();renderLab()}
  else if(a==='tune'){P.tune=+v;save();renderLab()}
+ else if(a==='prev')await previewMix();
+ else if(a==='vp'){P.vp=+v;save();renderLab()}
+ else if(a==='vpPrev'){const sec=P.sections.find(x=>tkOf(x));if(!sec)return toast('Record a part first 🎤');toast('Preparing preview…');
+  try{const tk=tkOf(sec),b=await takeBuf(tk.id);if(!b)return toast('Could not load your recording');
+   const sr=b.sampleRate,i0=Math.floor(Math.min(tk.lead||0,Math.max(0,b.duration-1))*sr),n=Math.min(Math.floor(8*sr),b.length-i0),c=lc().createBuffer(b.numberOfChannels,n,sr);
+   for(let k=0;k<b.numberOfChannels;k++)c.copyToChannel(b.getChannelData(k).slice(i0,i0+n),k);
+   const o=P.vp?await shiftBuf(c,P.vp):c,g=takeGain(o);for(let k=0;k<o.numberOfChannels;k++){const d=o.getChannelData(k);for(let i=0;i<d.length;i++)d[i]*=g}
+   playBuf(o)}catch(e){console.error(e);toast('Preview failed')}}
+ else if(a==='auto'){P.auto=v==='1';save();renderLab()}
  else if(a==='mas'){P.master=v;save();renderLab()}
  else if(a==='punch')punchSheet(i);
  else if(a==='bk'){if((P.sections[i].bk||[]).length>=3)toast('Up to 3 backing vocals per part');else record(i,{layer:1})}
@@ -647,18 +659,49 @@ function bgMp3(buf,me,base){
   w.onerror=()=>{w.terminate();upd('')};
   w.postMessage({src:new URL('lame.min.js',location.href).href,ch,sr:buf.sampleRate,kb:lite?96:192,g:buf.__m?1:pk>.0001?Math.min(3,.97/pk):1,d},d.map(a=>a.buffer))
  }catch(e){console.error(e)}}
+
+/* ---- voice pitch: deeper bass voice or higher girl / chipmunk voice, same speed, still YOUR voice ---- */
+async function shiftBuf(b,semi,onProg){
+ const r=Math.pow(2,semi/12),n=b.length,sr=b.sampleRate,W=Math.round(sr*.04)&~1,half=W>>1,dd=1-r,o=lc().createBuffer(b.numberOfChannels,n,sr);
+ for(let c=0;c<b.numberOfChannels;c++){const x=b.getChannelData(c),out=new Float32Array(n);let d1=0,d2=half;
+  for(let i=0;i<n;i++){d1+=dd;d2+=dd;if(d1<0)d1+=W;else if(d1>=W)d1-=W;if(d2<0)d2+=W;else if(d2>=W)d2-=W;
+   const q=i-half;if(q>=0){const w1=d1<half?d1/half:2-d1/half,w2=1-w1,p1=i-d1,p2=i-d2,i1=p1|0,i2=p2|0,f1=p1-i1,f2=p2-i2;
+    const a=i1>=0&&i1+1<n?x[i1]*(1-f1)+x[i1+1]*f1:0,e=i2>=0&&i2+1<n?x[i2]*(1-f2)+x[i2+1]*f2:0;out[q]=a*w1+e*w2}
+   if((i&262143)===262143){onProg&&onProg((c+i/n)/b.numberOfChannels);await sleep(0)}}
+  o.copyToChannel(out,c)}
+ onProg&&onProg(1);return o}
+/* auto level: how much to lift / lower a recording so every voice sits at a normal level */
+function takeGain(b){const d=b.getChannelData(0);let s=0,c=0;for(let i=0;i<d.length;i+=3){const v=d[i];if(v>.02||v<-.02){s+=v*v;c++}}
+ if(c<2000)return 1;return Math.max(.4,Math.min(4,.13/Math.sqrt(s/c)))}
+/* quick preview: the first recorded part (up to 4 bars) with beat, voice pitch, tuning, studio effect, auto mix and mastering */
+async function previewMix(){const s0=P.sections.find(x=>tkOf(x));if(!s0)return toast('Record a part first 🎤');
+ stopL();toast('Making a short preview…');
+ try{await ensureBeat(P);const sec=Object.assign({},s0,{bars:Math.min(s0.bars,4)}),bar=240/P.beat.bpm,sy=(P.sync||0)/1000,tk=tkOf(sec),ts=[tk,...(sec.bk||[])].filter(Boolean);
+  TUN={};
+  for(const t of ts){if(!TB[t.id])await takeBuf(t.id);const b=TB[t.id];if(!b)continue;
+   const sr=b.sampleRate,n=Math.min(b.length,Math.ceil((t.lead+sy+sec.bars*bar+2)*sr)),c=lc().createBuffer(b.numberOfChannels,n,sr);
+   for(let k=0;k<b.numberOfChannels;k++)c.copyToChannel(b.getChannelData(k).slice(0,n),k);TUN[t.id]=c;
+   if(P.tune>0)TUN[t.id]=await tuneBuf(TUN[t.id],P.beat.key||0,P.beat.mode||'m',P.tune);
+   if(P.vp)TUN[t.id]=await shiftBuf(TUN[t.id],P.vp)}
+  let p2=Object.assign({},P,{sections:[sec]});
+  if(P.auto!==false){const tg={};for(const t of ts){const b=VB(t.id);if(b)tg[t.id]=takeGain(b)}p2=Object.assign(p2,{vol:{beat:72,voc:110,bk:55},tg})}
+  let buf=await mixProject(p2);TUN={};
+  if(P.master&&P.master!=='off')buf=await masterBuf(buf,P.master);
+  playBuf(buf)}catch(e){console.error(e);TUN={};toast('Preview failed')}}
 async function create(){fixP(P);if(!P.sections.some(s=>tkOf(s)))return toast('Record at least one part first 🎤');
  stopL();BUSY=true;$('#busy').classList.add('on');const msg=$('#bMsg'),bar=$('#bBar');
  const set=(t,f)=>{const v=Math.max(0,Math.min(100,Math.round(f*100)));msg.textContent=t+' '+v+'%';bar.style.width=v+'%'};
- const tu=P.tune>0,ma=P.master&&P.master!=='off',a0=.08,a1=tu?.28:.08,mixEnd=ma?.6:.65,saveSt=ma?.7:.65;
+ const tu=P.tune>0,sh=(P.vp||0)!==0,ma=P.master&&P.master!=='off',a0=.08,a1=(tu||sh)?.28:.08,am=tu&&sh?(.08+.28)/2:a1,mixEnd=ma?.6:.65,saveSt=ma?.7:.65;
  set('Preparing your recordings',0);
  try{await ensureBeat(P);
   const all=[...new Set(P.sections.flatMap(s=>[tkOf(s),...(s.bk||[])]).filter(Boolean).map(t=>t.id))],need=all.filter(id=>!TB[id]);let dn=0;
   await Promise.all(need.map(id=>takeBuf(id).then(()=>set('Preparing your recordings',a0*(++dn/need.length)))));
   TUN={};
-  if(tu){let k=0;for(const id of all){if(TB[id])TUN[id]=await tuneBuf(TB[id],P.beat.key||0,P.beat.mode||'m',P.tune,f=>set('Tuning your voice',a0+(a1-a0)*((k+f)/all.length)));k++}}
+  if(tu){let k=0;for(const id of all){if(TB[id])TUN[id]=await tuneBuf(TB[id],P.beat.key||0,P.beat.mode||'m',P.tune,f=>set('Tuning your voice',a0+(am-a0)*((k+f)/all.length)));k++}}
+  if(sh){let k=0;const s0=tu?am:a0;for(const id of all){const src=VB(id);if(src)TUN[id]=await shiftBuf(src,P.vp,f=>set('Changing your voice',s0+(a1-s0)*((k+f)/all.length)));k++}}
+  let Pm=P;if(P.auto!==false){const tg={};for(const id of all){const b=VB(id);if(b)tg[id]=takeGain(b)}Pm=Object.assign({},P,{vol:{beat:72,voc:110,bk:55},tg})}
   set('Mixing your song',a1);await sleep(30);
-  let buf=await mixProject(P,f=>set('Mixing your song',a1+(mixEnd-a1)*f)),cmp=null;TUN={};
+  let buf=await mixProject(Pm,f=>set('Mixing your song',a1+(mixEnd-a1)*f)),cmp=null;TUN={};
   if(ma){set('Mastering',mixEnd);await sleep(20);const ca=cmpSlice(buf);buf=await masterBuf(buf,P.master,f=>set('Mastering',mixEnd+.1*f));cmp={a:ca,b:cmpSlice(buf)}}
   set('Saving',saveSt);await sleep(20);
   const wb=await wavAsync(buf,f=>set('Saving',saveSt+(1-saveSt)*f));
@@ -669,8 +712,8 @@ async function create(){fixP(P);if(!P.sections.some(s=>tkOf(s)))return toast('Re
  BUSY=false;$('#busy').classList.remove('on');renderLab();setTimeout(()=>window.scrollTo(0,document.body.scrollHeight),80)}
 const lab=$('#lab');
 lab.addEventListener('click',e=>{const b=e.target.closest('[data-a]');if(b)act(b.dataset.a,b.dataset.i,b.dataset.v)});
-lab.addEventListener('input',e=>{const f=e.target.dataset.f;if(['name','artist','lyr','vb','vv','vk','sy','xvol'].includes(f))setField(e.target)});
+lab.addEventListener('input',e=>{const f=e.target.dataset.f;if(['name','artist','lyr','vb','vv','vk','sy','xvol','vp'].includes(f))setField(e.target)});
 lab.addEventListener('change',e=>{if(e.target.dataset.lite!==undefined){SV('lite',e.target.checked);return}
- const f=e.target.dataset.f;if(f&&!['name','artist','lyr','vb','vv','vk','sy','xvol'].includes(f))setField(e.target)});
+ const f=e.target.dataset.f;if(f&&!['name','artist','lyr','vb','vv','vk','sy','xvol','vp'].includes(f))setField(e.target)});
 R.lab=renderLab;
 })();
